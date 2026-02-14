@@ -8,6 +8,7 @@ import (
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+// TODO: Move client into a struct interface style
 var messagePubHandler pahomqtt.MessageHandler = func(client pahomqtt.Client, msg pahomqtt.Message) {
 	// TODO: Move these into standardized logging
 	fmt.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
