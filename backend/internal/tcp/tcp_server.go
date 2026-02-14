@@ -67,8 +67,9 @@ func readBoard(conn net.Conn) {
 		data := strings.Split(line, ",")
 
 		// TODO: Move verification into a different package
-		if len(data) != 7 {
+		if len(data) != 8 {
 			log.Println("Data from the board is not complete")
+			return
 		}
 
 		boardNumber := strings.Split(line, ",")[7]
