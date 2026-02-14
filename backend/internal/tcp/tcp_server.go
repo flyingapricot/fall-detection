@@ -44,6 +44,8 @@ func readBoard(conn net.Conn) {
 
 		line := strings.TrimSpace(message)
 		log.Printf("Received: %s", line)
+
+		conn.Write([]byte("ACK\n"))
 	}
 
 }
