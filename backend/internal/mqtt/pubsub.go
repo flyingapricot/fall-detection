@@ -1,4 +1,4 @@
-package main
+package mqtt
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ func sub(client mqtt.Client, topic string) {
 	fmt.Println("Successfully Subscibed To Topic ", topic)
 }
 
-func publish(client mqtt.Client, topic string, message string) {
+func Publish(client mqtt.Client, topic string, message string) {
 	token := client.Publish(topic, 0, false, message)
 	token.Wait()
 	time.Sleep(time.Second)

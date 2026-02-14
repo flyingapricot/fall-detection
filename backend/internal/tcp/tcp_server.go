@@ -2,18 +2,25 @@ package tcp
 
 import (
 	"bufio"
+	"fall-detection/internal/mqtt"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"strings"
+
+	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 )
+
+var publisher pahomqtt.Client
 
 const (
 	PORT = ":8090"
 )
 
-func StartTcp() {
+func StartTcp(pub pahomqtt.Client) {
+	publisher = pub
+
 	listener, err := net.Listen("tcp", PORT)
 	if err != nil {
 		log.Fatal("Error listening: ", err)
@@ -50,6 +57,30 @@ func readBoard(conn net.Conn) {
 
 		line := strings.TrimSpace(message)
 		fmt.Printf("Received: %s", line)
+
+		// 0 - 2 is accelerometer data
+		// 3 - 5 is gyrometer data
+		// 6 is fallStatus
+		// 7 is the board number
+
+		// Publish to MQTT Broker
+		data := strings.Split(line, ",")
+
+		// TODO: Move verification into a different package
+		if len(data) != 7 {
+			log.Println("Data from the board is not complete")
+		}
+
+		boardNumber := strings.Split(line, ",")[7]
+		sensorTopic := "fall-detection/board" + boardNumber + "/sensors"
+		alertTopic := "fall-detection/board" + boardNumber + "/alerts"
+
+		mqtt.Publish(publisher, sensorTopic, line)
+
+		if len(data) >= 7 && data[6] == "1" {
+			mqtt.Publish(publisher, alertTopic, line)
+		}
+
 	}
 
 }
