@@ -2,6 +2,8 @@ package tcp
 
 import (
 	"bufio"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -38,12 +40,16 @@ func readBoard(conn net.Conn) {
 		message, err := reader.ReadString('\n')
 
 		if err != nil {
-			log.Printf("Read error: %v", err)
+			if err == io.EOF {
+				fmt.Printf("Read error: %v", err, conn.RemoteAddr())
+			} else {
+				log.Printf("Read error: %v", err)
+			}
 			return
 		}
 
 		line := strings.TrimSpace(message)
-		log.Printf("Received: %s", line)
+		fmt.Printf("Received: %s", line)
 	}
 
 }
