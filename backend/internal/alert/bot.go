@@ -4,9 +4,13 @@ import (
 	"context"
 	"fall-detection/internal/repository"
 	"log"
+	"regexp"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+var boardIDPattern = regexp.MustCompile(`^board\d+$`)
 
 type Bot struct {
 	api *tgbotapi.BotAPI
@@ -59,24 +63,34 @@ func (b *Bot) ListenForCommands(repo *repository.SubscriptionRepo) {
 		command := update.Message.Command()
 		args := update.Message.CommandArguments()
 
+		boardID := strings.TrimSpace(args)
+
 		switch command {
 			case "subscribe":
+				if !boardIDPattern.MatchString(boardID) {
+					b.api.Send(tgbotapi.NewMessage(chatID, "Invalid format. Usage: /subscribe board#number\nExample: /subscribe board1"))
+					continue
+				}
 				user := update.Message.From
-				err := repo.CreateSubscription(context.Background(), chatID, args, user.FirstName, user.UserName)
+				err := repo.CreateSubscription(context.Background(), chatID, boardID, user.FirstName, user.UserName)
 				if err != nil {
 					b.api.Send(tgbotapi.NewMessage(chatID, "Failed to subscribe"))
 				} else {
-					b.api.Send(tgbotapi.NewMessage(chatID, "Subscribed to "+args))
+					b.api.Send(tgbotapi.NewMessage(chatID, "Subscribed to "+boardID))
 				}
 			case "unsubscribe":
-				err := repo.Unsubscribe(context.Background(), chatID, args)
+				if !boardIDPattern.MatchString(boardID) {
+					b.api.Send(tgbotapi.NewMessage(chatID, "Invalid format. Usage: /unsubscribe board#number\nExample: /unsubscribe board1"))
+					continue
+				}
+				err := repo.Unsubscribe(context.Background(), chatID, boardID)
 				if err != nil {
 					b.api.Send(tgbotapi.NewMessage(chatID, "Failed to unsubscribe"))
 				} else {
-					b.api.Send(tgbotapi.NewMessage(chatID, "Unsubscribed from "+args))
+					b.api.Send(tgbotapi.NewMessage(chatID, "Unsubscribed from "+boardID))
 				}
 			default:
-				b.api.Send(tgbotapi.NewMessage(chatID, "Invalid command"))
+				b.api.Send(tgbotapi.NewMessage(chatID, "Unknown command. Available commands:\n/subscribe board#number\n/unsubscribe board#number"))
 		}
 
 	}

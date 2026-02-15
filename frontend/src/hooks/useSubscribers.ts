@@ -18,7 +18,7 @@ export function useSubscribers(boardId: string) {
 
     async function fetchSubscribers() {
       try {
-        const res = await fetch(`${API_URL}/subscribers/${boardId}`);
+        const res = await fetch(`${API_URL}/boards/${boardId}/subscribers`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (active) {

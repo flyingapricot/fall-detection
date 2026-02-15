@@ -7,8 +7,5 @@ import (
 )
 
 func RegisterSubscribersRoutes(r *gin.Engine, subscribersHandler *handlers.SubscribersHandler) {
-	subscribers := r.Group("/subscribers")
-	{
-		subscribers.GET("/:boardID", subscribersHandler.GetSubscribers)
-	}
+	r.GET("/boards/:boardID/subscribers", subscribersHandler.GetSubscribers)
 }

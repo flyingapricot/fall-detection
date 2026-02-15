@@ -1,27 +1,39 @@
 import { useSubscribers } from "../hooks/useSubscribers";
 
+const BOT_URL = "https://t.me/FallDetection_CG2028_Bot";
+
 export default function SubscriberList({ boardId }: { boardId: string }) {
   const { subscribers, loading, error } = useSubscribers(boardId);
 
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-      <h3 className="mb-3 text-sm font-medium text-gray-300">
-        Subscribers
-        {!loading && !error && (
-          <span className="ml-1.5 text-xs text-gray-500">({subscribers.length})</span>
-        )}
-      </h3>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-gray-300">
+          Subscribers
+          {!loading && !error && (
+            <span className="ml-1.5 text-xs text-gray-500">({subscribers.length})</span>
+          )}
+        </h3>
+        <a
+          href={BOT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+        >
+          Telegram Bot &rarr;
+        </a>
+      </div>
 
       {loading && <p className="text-xs text-gray-600">Loading...</p>}
 
       {error && <p className="text-xs text-red-400">Failed to load subscribers</p>}
 
       {!loading && !error && subscribers.length === 0 && (
-        <p className="text-xs text-gray-600">No subscribers for this board</p>
+        <p className="text-xs text-gray-600">No subscribers yet</p>
       )}
 
       {!loading && !error && subscribers.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="mb-3 flex flex-wrap gap-2">
           {subscribers.map((sub) => (
             <div
               key={sub.chatID}
@@ -40,6 +52,20 @@ export default function SubscriberList({ boardId }: { boardId: string }) {
           ))}
         </div>
       )}
+
+      <div className="rounded bg-gray-800/50 px-3 py-2 text-xs text-gray-500">
+        To get fall alerts, open the{" "}
+        <a href={BOT_URL} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
+          Telegram bot
+        </a>{" "}
+        and send:
+        <div className="mt-1 font-mono text-gray-400">
+          /subscribe {boardId}
+        </div>
+        <div className="mt-0.5 font-mono text-gray-400">
+          /unsubscribe {boardId}
+        </div>
+      </div>
     </div>
   );
 }
