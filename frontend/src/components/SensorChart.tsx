@@ -6,15 +6,26 @@ import type { SensorReading } from "../types/sensor";
 type ChartType = "accel" | "gyro";
 
 const COLORS = { x: "#6366f1", y: "#10b981", z: "#f59e0b" }; // indigo, emerald, amber
-const LABELS: Record<ChartType, Record<string, string>> = {
-  accel: { x: "Accel X", y: "Accel Y", z: "Accel Z" },
-  gyro: { x: "Gyro X", y: "Gyro Y", z: "Gyro Z" },
+
+const TITLES: Record<ChartType, string> = {
+  accel: "Accelerometer",
+  gyro: "Gyroscope",
+};
+
+const UNITS: Record<ChartType, string> = {
+  accel: "m/s²",
+  gyro: "°/s",
 };
 
 function getFields(type: ChartType): [keyof SensorReading, keyof SensorReading, keyof SensorReading] {
   return type === "accel"
     ? ["accelX", "accelY", "accelZ"]
     : ["gyroX", "gyroY", "gyroZ"];
+}
+
+function fmtTime(ts: number): string {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString("en-US", { hour12: false });
 }
 
 export default function SensorChart({
@@ -29,10 +40,14 @@ export default function SensorChart({
   const [visible, setVisible] = useState({ x: true, y: true, z: true });
   const fields = getFields(type);
 
+  const latest = readings.length > 0 ? readings[readings.length - 1] : null;
+
   // Create chart once
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    const unit = UNITS[type];
 
     const opts: uPlot.Options = {
       width: el.clientWidth,
@@ -40,14 +55,24 @@ export default function SensorChart({
       cursor: { show: false },
       legend: { show: false },
       axes: [
-        { stroke: "#6b7280", grid: { stroke: "#1f2937" }, ticks: { stroke: "#374151" } },
-        { stroke: "#6b7280", grid: { stroke: "#1f2937" }, ticks: { stroke: "#374151" } },
+        {
+          stroke: "#6b7280",
+          grid: { stroke: "#1f2937" },
+          ticks: { stroke: "#374151" },
+          values: (_u, splits) => splits.map((s) => fmtTime(s)),
+        },
+        {
+          stroke: "#6b7280",
+          grid: { stroke: "#1f2937" },
+          ticks: { stroke: "#374151" },
+          values: (_u, splits) => splits.map((s) => s.toFixed(1) + " " + unit),
+        },
       ],
       series: [
         {},
-        { label: LABELS[type].x, stroke: COLORS.x, width: 1.5 },
-        { label: LABELS[type].y, stroke: COLORS.y, width: 1.5 },
-        { label: LABELS[type].z, stroke: COLORS.z, width: 1.5 },
+        { stroke: COLORS.x, width: 1.5 },
+        { stroke: COLORS.y, width: 1.5 },
+        { stroke: COLORS.z, width: 1.5 },
       ],
     };
 
@@ -91,9 +116,12 @@ export default function SensorChart({
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-300">
-          {type === "accel" ? "Accelerometer" : "Gyroscope"}
-        </h3>
+        <div>
+          <h3 className="text-sm font-medium text-gray-300">
+            {TITLES[type]}
+            <span className="ml-1.5 text-xs text-gray-500">({UNITS[type]})</span>
+          </h3>
+        </div>
         <div className="flex gap-1.5">
           {(["x", "y", "z"] as const).map((axis) => (
             <button
@@ -114,6 +142,29 @@ export default function SensorChart({
           ))}
         </div>
       </div>
+
+      {/* Latest values */}
+      {latest ? (
+        <div className="mb-2 flex gap-4 text-xs font-mono">
+          {(["x", "y", "z"] as const).map((axis, i) => (
+            <span
+              key={axis}
+              className={
+                axis === "x"
+                  ? "text-indigo-400"
+                  : axis === "y"
+                    ? "text-emerald-400"
+                    : "text-amber-400"
+              }
+            >
+              {axis.toUpperCase()}: {(latest[fields[i]] as number).toFixed(2)}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="mb-2 text-xs text-gray-600">Waiting for data...</div>
+      )}
+
       <div ref={containerRef} />
     </div>
   );
