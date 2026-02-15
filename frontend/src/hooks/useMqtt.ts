@@ -25,11 +25,18 @@ export function useMqtt(boardId: string) {
   useEffect(() => {
     const topic = `fall-detection/board${boardId}/sensors`;
 
-    const client = mqtt.connect(BROKER_URL, {
-      username: USERNAME,
-      password: PASSWORD,
-      reconnectPeriod: 3000,
-    });
+    let client: mqtt.MqttClient;
+    try {
+      client = mqtt.connect(BROKER_URL, {
+        username: USERNAME,
+        password: PASSWORD,
+        protocol: "wss",
+        reconnectPeriod: 3000,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect");
+      return;
+    }
 
     clientRef.current = client;
 
