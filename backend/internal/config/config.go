@@ -11,6 +11,8 @@ var (
 	MQTTPort     string
 	MQTTUsername string
 	MQTTPassword string
+	HTTPPort     string
+	TCPPort      string
 )
 
 func Load() {
@@ -20,4 +22,6 @@ func Load() {
 	MQTTPort = os.Getenv("MQTT_PORT")
 	MQTTUsername = os.Getenv("MQTT_USERNAME")
 	MQTTPassword = os.Getenv("MQTT_PASSWORD")
+	HTTPPort = os.Getenv("HTTP_PORT")
+	TCPPort = os.Getenv("TCP_PORT")
 }
