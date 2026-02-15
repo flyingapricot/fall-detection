@@ -30,7 +30,6 @@ export function useMqtt(boardId: string) {
       client = mqtt.connect(BROKER_URL, {
         username: USERNAME,
         password: PASSWORD,
-        protocol: "wss",
         reconnectPeriod: 3000,
       });
     } catch (err) {
