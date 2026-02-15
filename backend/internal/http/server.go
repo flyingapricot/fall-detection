@@ -20,7 +20,8 @@ func New(port string, healthHandler handlers.HealthHandler, boardHandler *handle
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: config.CORSOrigins,
-		AllowMethods: []string{"GET"},
+		AllowMethods: []string{"GET", "OPTIONS"},
+		AllowHeaders: []string{"Origin", "Content-Type"},
 	}))
 
 	routes.RegisterHealthRoutes(r, healthHandler)
