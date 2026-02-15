@@ -60,10 +60,10 @@ export default function SubscriberList({ boardId }: { boardId: string }) {
         </a>{" "}
         and send:
         <div className="mt-1 font-mono text-gray-400">
-          /subscribe {boardId}
+          /subscribe board{boardId}
         </div>
         <div className="mt-0.5 font-mono text-gray-400">
-          /unsubscribe {boardId}
+          /unsubscribe board{boardId}
         </div>
       </div>
     </div>
