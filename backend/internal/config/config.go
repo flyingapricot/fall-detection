@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -13,6 +14,7 @@ var (
 	MQTTPassword string
 	HTTPPort     string
 	TCPPort      string
+	CORSOrigins  []string
 )
 
 func Load() {
@@ -24,4 +26,8 @@ func Load() {
 	MQTTPassword = os.Getenv("MQTT_PASSWORD")
 	HTTPPort = os.Getenv("HTTP_PORT")
 	TCPPort = os.Getenv("TCP_PORT")
+
+	if origins := os.Getenv("CORS_ORIGINS"); origins != "" {
+		CORSOrigins = strings.Split(origins, ",")
+	}
 }
