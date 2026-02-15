@@ -8,22 +8,50 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
+	"time"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-var publisher pahomqtt.Client
+type Board struct {
+	ID          string
+	ConnectedAt time.Time
+	LastSeen    time.Time
+}
+
+type TCPServer struct {
+	Addr      string // Port
+	Publisher pahomqtt.Client
+
+	Boards   map[string]*Board
+	BoardsMu sync.RWMutex
+
+	Conns   map[string]net.Conn
+	ConnsMu sync.RWMutex
+
+	BoardToConn   map[string]string // boardID -> connID
+	BoardToConnMu sync.RWMutex
+}
 
 const (
-	PORT = ":8090"
+	staleAfter = 10 * time.Second
 )
 
-func StartTcp(pub pahomqtt.Client) {
-	publisher = pub
+func NewTCPServer(addr string, pub pahomqtt.Client) *TCPServer {
+	return &TCPServer{
+		Addr:      addr,
+		Publisher: pub,
+		Boards:    make(map[string]*Board),
+		Conns:     make(map[string]net.Conn),
+	}
+}
 
-	listener, err := net.Listen("tcp", PORT)
+func (s *TCPServer) Start() error {
+	listener, err := net.Listen("tcp", s.Addr)
 	if err != nil {
 		log.Fatal("Error listening: ", err)
+		return err
 	}
 
 	defer listener.Close()
@@ -35,14 +63,33 @@ func StartTcp(pub pahomqtt.Client) {
 			continue
 		}
 
-		go readBoard(conn)
+		id := conn.RemoteAddr().String()
+		s.ConnsMu.Lock()
+		s.Conns[id] = conn
+		s.ConnsMu.Unlock()
+
+		go s.readBoard(id, conn)
 	}
 }
 
-func readBoard(conn net.Conn) {
+func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 	defer conn.Close()
 
+	// Unregister connection when exiting
+	defer func() {
+		s.ConnsMu.Lock()
+		delete(s.Conns, id)
+		s.ConnsMu.Unlock()
+
+		s.BoardsMu.Lock()
+		delete(s.Boards, id)
+		s.BoardsMu.Unlock()
+	}()
+
 	reader := bufio.NewReader(conn)
+	var boardID string
+	registered := false
+
 	for {
 		message, err := reader.ReadString('\n')
 
@@ -52,11 +99,16 @@ func readBoard(conn net.Conn) {
 			} else {
 				log.Printf("Read error: %v", err)
 			}
-			return
+			return err
 		}
 
 		line := strings.TrimSpace(message)
 		fmt.Printf("Received: %s", line)
+		if line == "" {
+			// No message received from the board
+			s.BoardsMu.RLock()
+			continue
+		}
 
 		// 0 - 2 is accelerometer data
 		// 3 - 5 is gyrometer data
@@ -64,24 +116,86 @@ func readBoard(conn net.Conn) {
 		// 7 is the board number
 
 		// Publish to MQTT Broker
-		data := strings.Split(line, ",")
+		fields := strings.Split(line, ",")
 
-		// TODO: Move verification into a different package
-		if len(data) != 8 {
-			log.Println("Data from the board is not complete")
-			return
+		// TODO: Create and Move verification into a different package
+		if len(fields) != 8 {
+			log.Printf("Invalid message (len=%d) from %s: %q", len(fields), conn.RemoteAddr(), line)
+			continue
 		}
 
-		boardNumber := strings.Split(line, ",")[7]
-		sensorTopic := "fall-detection/board" + boardNumber + "/sensors"
-		alertTopic := "fall-detection/board" + boardNumber + "/alerts"
+		// First message is to establish board identity
+		if !registered {
+			boardID = fields[7]
 
-		mqtt.Publish(publisher, sensorTopic, line)
+			s.BoardToConnMu.RLock()
+			existing, exists := s.BoardToConn[boardID]
+			s.BoardToConnMu.RUnlock()
 
-		if len(data) >= 7 && data[6] == "1" {
-			mqtt.Publish(publisher, alertTopic, line)
+			if exists {
+				s.BoardsMu.RLock()
+				existingBoard := s.Boards[existing]
+				s.BoardsMu.RUnlock()
+
+				stale := existingBoard == nil || time.Since(existingBoard.LastSeen) > 10*time.Second
+				if !stale {
+					return fmt.Errorf("duplicate boardID %s", boardID)
+				} else {
+					// Connection is stale
+					s.ConnsMu.RLock()
+					oldConn := s.Conns[existing]
+					s.ConnsMu.RUnlock()
+
+					if oldConn != nil {
+						log.Printf("Closing stale connection for board %s (%s)", boardID, existing)
+						_ = oldConn.Close()
+					}
+				}
+
+			}
+
+			s.BoardsMu.Lock()
+			s.Boards[id] = &Board{
+				ID:          boardID,
+				ConnectedAt: time.Now(),
+				LastSeen:    time.Now(),
+			}
+			s.BoardsMu.Unlock()
+			registered = true
+		} else {
+			// Update LastSeen since message
+			// has been successfully receieved
+			now := time.Now()
+			s.BoardsMu.Lock()
+			b := s.Boards[id]
+			if b != nil {
+				b.LastSeen = now
+			}
+			s.BoardsMu.Unlock()
+		}
+
+		sensorTopic := "fall-detection/board" + boardID + "/sensors"
+		alertTopic := "fall-detection/board" + boardID + "/alerts"
+
+		mqtt.Publish(s.Publisher, sensorTopic, line)
+
+		if fields[6] == "1" {
+			mqtt.Publish(s.Publisher, alertTopic, line)
 		}
 
 	}
+}
 
+func (s *TCPServer) GetBoards() []*Board {
+	s.BoardsMu.RLock()
+
+	var result []*Board
+
+	for _, board := range s.Boards {
+		result = append(result, board)
+	}
+
+	s.BoardsMu.RUnlock()
+
+	return result
 }
