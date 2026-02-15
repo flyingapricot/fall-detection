@@ -35,7 +35,7 @@ type TCPServer struct {
 }
 
 const (
-	staleAfter = 10 * time.Second
+	staleAfter = 5 * time.Second
 )
 
 func NewTCPServer(addr string, pub pahomqtt.Client) *TCPServer {
@@ -91,6 +91,8 @@ func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 	registered := false
 
 	for {
+		// Timeout if no data received within 15 seconds
+		conn.SetReadDeadline(time.Now().Add(staleAfter))
 		message, err := reader.ReadString('\n')
 
 		if err != nil {
