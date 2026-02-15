@@ -1,0 +1,8 @@
+CREATE TABLE subscriptions (
+    id SERIAL PRIMARY KEY,
+    chat_id BIGINT NOT NULL,
+    board_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (chat_id, board_id)
+);

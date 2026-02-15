@@ -1,0 +1,2 @@
+ALTER TABLE subscriptions ADD COLUMN first_name VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE subscriptions ADD COLUMN username VARCHAR(255) NOT NULL DEFAULT '';

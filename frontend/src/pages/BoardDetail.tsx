@@ -3,6 +3,7 @@ import { useMqtt } from "../hooks/useMqtt";
 import SensorChart from "../components/SensorChart";
 import SensorConsole from "../components/SensorConsole";
 import FallAlertBanner from "../components/FallAlertBanner";
+import SubscriberList from "../components/SubscriberList";
 import type { SensorReading } from "../types/sensor";
 
 function exportCSV(readings: SensorReading[], boardId: string) {
@@ -98,6 +99,11 @@ export default function BoardDetail() {
       <div className="mb-4 grid gap-4 md:grid-cols-2">
         <SensorChart readings={readings} type="accel" />
         <SensorChart readings={readings} type="gyro" />
+      </div>
+
+      {/* Subscribers */}
+      <div className="mb-4">
+        <SubscriberList boardId={id!} />
       </div>
 
       {/* Console */}
