@@ -1,0 +1,29 @@
+export interface SensorReading {
+  timestamp: number;
+  accelX: number;
+  accelY: number;
+  accelZ: number;
+  gyroX: number;
+  gyroY: number;
+  gyroZ: number;
+  fallStatus: boolean;
+  boardNumber: number;
+}
+
+export function parseSensorCSV(csv: string): SensorReading | null {
+  const parts = csv.trim().split(",");
+  if (parts.length < 8) return null;
+
+  const [aX, aY, aZ, gX, gY, gZ, fall, board] = parts;
+  return {
+    timestamp: Date.now(),
+    accelX: parseFloat(aX),
+    accelY: parseFloat(aY),
+    accelZ: parseFloat(aZ),
+    gyroX: parseFloat(gX),
+    gyroY: parseFloat(gY),
+    gyroZ: parseFloat(gZ),
+    fallStatus: fall.trim() === "1",
+    boardNumber: parseInt(board, 10),
+  };
+}
