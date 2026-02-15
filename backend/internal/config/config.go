@@ -15,6 +15,8 @@ var (
 	HTTPPort     string
 	TCPPort      string
 	CORSOrigins  []string
+	DatabaseURL  string
+	BotToken     string
 )
 
 func Load() {
@@ -30,4 +32,6 @@ func Load() {
 	if origins := os.Getenv("CORS_ORIGINS"); origins != "" {
 		CORSOrigins = strings.Split(origins, ",")
 	}
+	DatabaseURL = os.Getenv("DATABASE_URL")
+	BotToken = os.Getenv("TELEGRAM_BOT_API_KEY")
 }
