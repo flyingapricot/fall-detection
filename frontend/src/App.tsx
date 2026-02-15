@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Header from "./components/Header";
 import Home from "./pages/Home";
+import BoardDetail from "./pages/BoardDetail";
 
 export default function App() {
   return (
@@ -9,14 +10,7 @@ export default function App() {
         <Header />
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route
-            path="/board/:id"
-            element={
-              <div className="mx-auto max-w-6xl px-4 py-8 text-gray-400">
-                Board detail page — coming soon
-              </div>
-            }
-          />
+          <Route path="/board/:id" element={<BoardDetail />} />
         </Routes>
       </div>
     </BrowserRouter>
