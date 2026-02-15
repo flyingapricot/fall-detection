@@ -21,11 +21,11 @@ export default function SensorConsole({
   readings: SensorReading[];
   isPaused: boolean;
 }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isPaused) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!isPaused && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [readings.length, isPaused]);
 
@@ -39,7 +39,7 @@ export default function SensorConsole({
           <span className="text-xs text-amber-400">Paused</span>
         )}
       </div>
-      <div className="h-48 overflow-y-auto rounded bg-gray-950 p-2 font-mono text-xs leading-relaxed">
+      <div ref={scrollRef} className="h-48 overflow-y-auto rounded bg-gray-950 p-2 font-mono text-xs leading-relaxed">
         {visible.length === 0 && (
           <span className="text-gray-600">Waiting for data...</span>
         )}
@@ -51,7 +51,6 @@ export default function SensorConsole({
             </div>
           );
         })}
-        <div ref={bottomRef} />
       </div>
     </div>
   );
