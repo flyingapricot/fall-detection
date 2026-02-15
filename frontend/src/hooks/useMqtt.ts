@@ -13,9 +13,11 @@ export function useMqtt(boardId: string) {
   const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isBoardActive, setIsBoardActive] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<mqtt.MqttClient | null>(null);
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bufferRef = useRef<SensorReading[]>([]);
 
   const resetStaleTimer = useCallback(() => {
     if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
@@ -26,11 +28,32 @@ export function useMqtt(boardId: string) {
   const addReading = useCallback((reading: SensorReading) => {
     setLatestReading(reading);
     resetStaleTimer();
-    setReadings((prev) => {
-      const next = [...prev, reading];
-      return next.length > MAX_READINGS ? next.slice(next.length - MAX_READINGS) : next;
+
+    // Always buffer
+    bufferRef.current = [...bufferRef.current, reading];
+    if (bufferRef.current.length > MAX_READINGS) {
+      bufferRef.current = bufferRef.current.slice(bufferRef.current.length - MAX_READINGS);
+    }
+
+    // Only update displayed readings when not paused
+    setIsPaused((paused) => {
+      if (!paused) {
+        setReadings([...bufferRef.current]);
+      }
+      return paused;
     });
   }, [resetStaleTimer]);
+
+  const togglePause = useCallback(() => {
+    setIsPaused((prev) => {
+      const next = !prev;
+      if (!next) {
+        // Resuming — sync displayed readings with buffer
+        setReadings([...bufferRef.current]);
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const topic = `fall-detection/board${boardId}/sensors`;
@@ -72,5 +95,5 @@ export function useMqtt(boardId: string) {
     };
   }, [boardId, addReading]);
 
-  return { readings, latestReading, isConnected, isBoardActive, error };
+  return { readings, latestReading, isConnected, isBoardActive, isPaused, togglePause, error };
 }

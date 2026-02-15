@@ -3,10 +3,34 @@ import { useMqtt } from "../hooks/useMqtt";
 import SensorChart from "../components/SensorChart";
 import SensorConsole from "../components/SensorConsole";
 import FallAlertBanner from "../components/FallAlertBanner";
+import type { SensorReading } from "../types/sensor";
+
+function exportCSV(readings: SensorReading[], boardId: string) {
+  const header = "timestamp,accelX,accelY,accelZ,gyroX,gyroY,gyroZ,fallStatus,boardNumber";
+  const rows = readings.map((r) =>
+    [
+      new Date(r.timestamp).toISOString(),
+      r.accelX, r.accelY, r.accelZ,
+      r.gyroX, r.gyroY, r.gyroZ,
+      r.fallStatus ? 1 : 0,
+      r.boardNumber,
+    ].join(",")
+  );
+  const csv = [header, ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `board-${boardId}-${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function BoardDetail() {
   const { id } = useParams<{ id: string }>();
-  const { readings, latestReading, isConnected, isBoardActive, error } = useMqtt(id!);
+  const {
+    readings, latestReading, isConnected, isBoardActive, isPaused, togglePause, error,
+  } = useMqtt(id!);
 
   const statusColor = !isConnected
     ? "bg-gray-600"
@@ -17,13 +41,13 @@ export default function BoardDetail() {
   const statusText = !isConnected
     ? error ?? "Connecting..."
     : isBoardActive
-      ? "Receiving data"
+      ? isPaused ? "Paused" : "Receiving data"
       : "Board inactive";
 
   const statusTextColor = !isConnected
     ? "text-gray-500"
     : isBoardActive
-      ? "text-emerald-400"
+      ? isPaused ? "text-amber-400" : "text-emerald-400"
       : "text-amber-400";
 
   return (
@@ -36,9 +60,30 @@ export default function BoardDetail() {
         >
           &larr; All Boards
         </Link>
-        <div className="flex items-center gap-2 text-sm">
-          <span className={`inline-block h-2 w-2 rounded-full ${statusColor}`} />
-          <span className={statusTextColor}>{statusText}</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-sm">
+            <span className={`inline-block h-2 w-2 rounded-full ${statusColor}`} />
+            <span className={statusTextColor}>{statusText}</span>
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              onClick={togglePause}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                isPaused
+                  ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+                  : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+              }`}
+            >
+              {isPaused ? "Resume" : "Pause"}
+            </button>
+            <button
+              onClick={() => exportCSV(readings, id!)}
+              disabled={readings.length === 0}
+              className="rounded bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-400 transition-colors hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Export CSV
+            </button>
+          </div>
         </div>
       </div>
 
@@ -56,7 +101,7 @@ export default function BoardDetail() {
       </div>
 
       {/* Console */}
-      <SensorConsole readings={readings} />
+      <SensorConsole readings={readings} isPaused={isPaused} />
     </div>
   );
 }

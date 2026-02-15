@@ -14,18 +14,31 @@ function formatLine(r: SensorReading) {
   return { text: `${ts} ${accel} ${gyro}${fall}`, isFall: r.fallStatus };
 }
 
-export default function SensorConsole({ readings }: { readings: SensorReading[] }) {
+export default function SensorConsole({
+  readings,
+  isPaused,
+}: {
+  readings: SensorReading[];
+  isPaused: boolean;
+}) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [readings.length]);
+    if (!isPaused) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [readings.length, isPaused]);
 
   const visible = readings.slice(-500);
 
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-      <h3 className="mb-2 text-sm font-medium text-gray-300">Sensor Log</h3>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-gray-300">Sensor Log</h3>
+        {isPaused && (
+          <span className="text-xs text-amber-400">Paused</span>
+        )}
+      </div>
       <div className="h-48 overflow-y-auto rounded bg-gray-950 p-2 font-mono text-xs leading-relaxed">
         {visible.length === 0 && (
           <span className="text-gray-600">Waiting for data...</span>
