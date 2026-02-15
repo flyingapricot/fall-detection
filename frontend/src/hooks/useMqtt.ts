@@ -6,21 +6,31 @@ const BROKER_URL = import.meta.env.VITE_MQTT_BROKER_URL as string;
 const USERNAME = import.meta.env.VITE_MQTT_USERNAME as string;
 const PASSWORD = import.meta.env.VITE_MQTT_PASSWORD as string;
 const MAX_READINGS = 200;
+const STALE_TIMEOUT = 5000;
 
 export function useMqtt(boardId: string) {
   const [readings, setReadings] = useState<SensorReading[]>([]);
   const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isBoardActive, setIsBoardActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<mqtt.MqttClient | null>(null);
+  const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetStaleTimer = useCallback(() => {
+    if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
+    setIsBoardActive(true);
+    staleTimerRef.current = setTimeout(() => setIsBoardActive(false), STALE_TIMEOUT);
+  }, []);
 
   const addReading = useCallback((reading: SensorReading) => {
     setLatestReading(reading);
+    resetStaleTimer();
     setReadings((prev) => {
       const next = [...prev, reading];
       return next.length > MAX_READINGS ? next.slice(next.length - MAX_READINGS) : next;
     });
-  }, []);
+  }, [resetStaleTimer]);
 
   useEffect(() => {
     const topic = `fall-detection/board${boardId}/sensors`;
@@ -55,11 +65,12 @@ export function useMqtt(boardId: string) {
     client.on("reconnect", () => setError(null));
 
     return () => {
+      if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
       client.unsubscribe(topic);
       client.end();
       clientRef.current = null;
     };
   }, [boardId, addReading]);
 
-  return { readings, latestReading, isConnected, error };
+  return { readings, latestReading, isConnected, isBoardActive, error };
 }
