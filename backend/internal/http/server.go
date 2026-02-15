@@ -1,7 +1,6 @@
 package http
 
 import (
-	"fall-detection/internal/config"
 	"fall-detection/internal/http/handlers"
 	"fall-detection/internal/http/routes"
 	"fmt"
@@ -19,9 +18,9 @@ func New(port string, healthHandler handlers.HealthHandler, boardHandler *handle
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins: config.CORSOrigins,
-		AllowMethods: []string{"GET", "OPTIONS"},
-		AllowHeaders: []string{"Origin", "Content-Type"},
+		AllowAllOrigins: true,
+		AllowMethods:    []string{"GET", "OPTIONS"},
+		AllowHeaders:    []string{"Origin", "Content-Type"},
 	}))
 
 	routes.RegisterHealthRoutes(r, healthHandler)
