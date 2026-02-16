@@ -91,7 +91,7 @@ func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 	registered := false
 
 	for {
-		// Timeout if no data received within 15 seconds
+		// Timeout if no data received within 5 seconds
 		conn.SetReadDeadline(time.Now().Add(staleAfter))
 		message, err := reader.ReadString('\n')
 
@@ -200,4 +200,25 @@ func (s *TCPServer) GetBoards() []*Board {
 	s.BoardsMu.RUnlock()
 
 	return result
+}
+
+func (s *TCPServer) WriteToBoard(boardID string, message string) error {
+	s.BoardToConnMu.RLock()
+	connID, exists := s.BoardToConn[boardID]
+	s.BoardToConnMu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("board %s not found", boardID)
+	}
+
+	s.ConnsMu.RLock()
+	conn := s.Conns[connID]
+	s.ConnsMu.RUnlock()
+
+	if conn == nil {
+		return fmt.Errorf("connection for board %s not found", boardID)
+	}
+
+	_, err := conn.Write([]byte(message))
+	return err
 }

@@ -3,8 +3,11 @@ package alert
 import (
 	"context"
 	"fall-detection/internal/repository"
+	"fall-detection/internal/tcp"
+	"fmt"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -16,6 +19,7 @@ type Bot struct {
 	api *tgbotapi.BotAPI
 	chatIDs []int64
 	SubscriptionRepo *repository.SubscriptionRepo
+	TCPServer *tcp.TCPServer
 }
 
 func (b *Bot) SendAlert(message string) error {
@@ -38,7 +42,7 @@ func (b *Bot) SendMessage(chatID int64, text string) error {
 }
 
 
-func NewBot(subscriptionRepo *repository.SubscriptionRepo, botToken string) (*Bot,error) {
+func NewBot(subscriptionRepo *repository.SubscriptionRepo, botToken string, tcpServer *tcp.TCPServer) (*Bot,error) {
 	api, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		return nil,err
@@ -47,15 +51,20 @@ func NewBot(subscriptionRepo *repository.SubscriptionRepo, botToken string) (*Bo
 	return &Bot{
 		api: api,
 		SubscriptionRepo: subscriptionRepo,
+		TCPServer: tcpServer,
 	}, nil
 }
 
-func (b *Bot) ListenForCommands(repo *repository.SubscriptionRepo) {
+func (b *Bot) ListenForCommands(subscriptionRepo *repository.SubscriptionRepo, fallEventRepo *repository.FallEventRepo) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := b.api.GetUpdatesChan(u)
 
 	for update := range updates {
+		if update.CallbackQuery != nil {
+			b.handleCallback(update.CallbackQuery, fallEventRepo)
+			continue
+		}
 		if update.Message == nil || !update.Message.IsCommand() {
 			continue
 		}
@@ -72,7 +81,7 @@ func (b *Bot) ListenForCommands(repo *repository.SubscriptionRepo) {
 					continue
 				}
 				user := update.Message.From
-				err := repo.CreateSubscription(context.Background(), chatID, boardID, user.FirstName, user.UserName)
+				err := subscriptionRepo.CreateSubscription(context.Background(), chatID, boardID, user.FirstName, user.UserName)
 				if err != nil {
 					b.api.Send(tgbotapi.NewMessage(chatID, "Failed to subscribe"))
 				} else {
@@ -83,15 +92,58 @@ func (b *Bot) ListenForCommands(repo *repository.SubscriptionRepo) {
 					b.api.Send(tgbotapi.NewMessage(chatID, "Invalid format. Usage: /unsubscribe board#number\nExample: /unsubscribe board1"))
 					continue
 				}
-				err := repo.Unsubscribe(context.Background(), chatID, boardID)
+				err := subscriptionRepo.Unsubscribe(context.Background(), chatID, boardID)
 				if err != nil {
 					b.api.Send(tgbotapi.NewMessage(chatID, "Failed to unsubscribe"))
 				} else {
 					b.api.Send(tgbotapi.NewMessage(chatID, "Unsubscribed from "+boardID))
+				}
+			case "fall":
+				if !boardIDPattern.MatchString(boardID) {
+					b.api.Send(tgbotapi.NewMessage(chatID, "Invalid format. Usage: /fall board#number"))
+					continue
+				}
+				err := b.TCPServer.WriteToBoard(boardID, "FALL\n")
+				if err != nil {
+					b.api.Send(tgbotapi.NewMessage(chatID, "Failed to send fall signal: "+err.Error()))
+				} else {
+					b.api.Send(tgbotapi.NewMessage(chatID, "Fall signal sent to "+boardID))
 				}
 			default:
 				b.api.Send(tgbotapi.NewMessage(chatID, "Unknown command. Available commands:\n/subscribe board#number\n/unsubscribe board#number"))
 		}
 
 	}
+}
+
+func (b *Bot) SendFallAlert(chatID int64, boardID string, eventID int64) {
+    msg := tgbotapi.NewMessage(chatID, "🚨 FALL DETECTED - Board "+boardID)
+    msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("✅ Mark Resolved", fmt.Sprintf("resolve:%d:%s", eventID,boardID)),
+        ),
+    )
+    b.api.Send(msg)
+}
+
+func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.FallEventRepo) {
+	data := callback.Data  // "resolve:123:board1"
+	parts := strings.Split(data, ":")
+    
+    if len(parts) == 3 && parts[0] == "resolve" {
+		eventID, _ := strconv.ParseInt(parts[1], 10, 64)
+		boardID := parts[2]
+
+        // Resolve the event
+        repo.Resolve(context.Background(), eventID, callback.From.ID)
+
+		b.TCPServer.WriteToBoard(boardID, "ACK\n")
+
+        // Answer the callback (removes loading state)
+        b.api.Request(tgbotapi.NewCallback(callback.ID, "Resolved!"))
+        
+        // Update the message
+        b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID, 
+            fmt.Sprintf("✅ Resolved by @%s", callback.From.UserName)))
+    }
 }
