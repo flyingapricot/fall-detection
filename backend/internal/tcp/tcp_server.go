@@ -187,6 +187,7 @@ func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 		mqtt.Publish(s.Publisher, sensorTopic, line)
 
 		if fields[6] == "1" {
+			log.Printf("[TCP Server] Sending alert to topic: %s", alertTopic)
 			mqtt.Publish(s.Publisher, alertTopic, line)
 		}
 
