@@ -36,7 +36,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Error creating alert service: ", err)
 	}
+	log.Println("[Main] About to call alertService.Start()")
 	alertService.Start()
+	log.Println("[Main] alertService.Start() completed")
 
 	// Start listening for telegram commands
 	go alertService.Bot.ListenForCommands(subscriptionRepo, fallEventRepo)
