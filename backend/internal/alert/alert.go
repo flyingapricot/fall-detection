@@ -19,6 +19,11 @@ type Alert struct {
 
 
 func (a *Alert) Start() {
+    log.Printf("[Alert] Client connected: %v", a.Client.IsConnected())
+    if !a.Client.IsConnected() {
+        log.Println("[Alert] ERROR: MQTT client not connected!")
+        return
+    }
     log.Println("[Alert] Subscribing to fall-detection/+/alerts...")
     token := a.Client.Subscribe("fall-detection/+/alerts", 1, func(client pahomqtt.Client, msg pahomqtt.Message) {
 		topic := msg.Topic()
