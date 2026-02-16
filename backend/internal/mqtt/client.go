@@ -33,6 +33,11 @@ func brokerConfig(clientID string) *pahomqtt.ClientOptions {
 	opts.SetDefaultPublishHandler(messagePubHandler)
 	opts.OnConnect = connectHandler
 	opts.OnConnectionLost = connectLostHandler
+	
+	// Auto-reconnect and keep subscriptions
+	opts.SetAutoReconnect(true)
+	opts.SetCleanSession(false)  // Broker remembers subscriptions
+	opts.SetResumeSubs(true)     // Resume subscriptions on reconnect
 
 	return opts
 }
