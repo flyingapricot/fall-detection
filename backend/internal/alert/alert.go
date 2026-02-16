@@ -24,6 +24,8 @@ func (a *Alert) Start() {
 		parts := strings.Split(topic, "/")
 		boardID := parts[1]
 
+		log.Printf("[Alert] Received: %s", msg.Topic())
+
 		// 1. Check for existing active fall
 		existing, err := a.FallEventRepo.GetActive(context.Background(), boardID)
 		if err == nil && existing != nil {
