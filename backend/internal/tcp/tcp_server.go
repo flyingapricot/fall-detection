@@ -109,7 +109,6 @@ func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 		fmt.Printf("Received: %s", line)
 		if line == "" {
 			// No message received from the board
-			s.BoardsMu.RLock()
 			continue
 		}
 
