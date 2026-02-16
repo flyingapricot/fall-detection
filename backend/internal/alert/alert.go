@@ -3,6 +3,7 @@ package alert
 import (
 	"context"
 	"fall-detection/internal/repository"
+	"fall-detection/internal/tcp"
 	"log"
 	"strings"
 
@@ -13,31 +14,45 @@ type Alert struct {
 	Client pahomqtt.Client
 	Bot *Bot
 	SubscriptionRepo *repository.SubscriptionRepo
+	FallEventRepo *repository.FallEventRepo
 }
 
 
 func (a *Alert) Start() {
     a.Client.Subscribe("fall-detection/+/alerts", 1,func(client pahomqtt.Client, msg pahomqtt.Message) {
-        data := string(msg.Payload())
 		topic := msg.Topic()
 		parts := strings.Split(topic, "/")
 		boardID := parts[1]
 
+		// 1. Check for existing active fall
+		existing, err := a.FallEventRepo.GetActive(context.Background(), boardID)
+		if err == nil && existing != nil {
+			// Already an active fall, skip
+			return
+		}
+
+		// 2. Create new fall event
+		eventID, err := a.FallEventRepo.Create(context.Background(), boardID)
+		if err != nil {
+			log.Printf("Failed to create fall event: %v", err)
+			return
+		}
+
+		// 3. Send alerts with inline button
 		chatIDs, _, _, err := a.SubscriptionRepo.GetSubscribers(context.Background(), boardID)
 		if err != nil {
 			log.Printf("Failed to get subscribers for board %s: %v", boardID, err)
 			return
 		}
 
-        // Send Telegram notification
 		for _, chatID := range chatIDs {
-			a.Bot.SendMessage(chatID, "🚨 Fall Detected!\n" + data)
+			a.Bot.SendFallAlert(chatID, boardID, eventID)
 		}
     })
 }
 
-func NewAlert(client pahomqtt.Client, subscriptionRepo *repository.SubscriptionRepo, botToken string) (*Alert,error) {
-	bot, err := NewBot(subscriptionRepo, botToken)
+func NewAlert(client pahomqtt.Client, subscriptionRepo *repository.SubscriptionRepo, fallEventRepo *repository.FallEventRepo, botToken string, tcpServer *tcp.TCPServer) (*Alert,error) {
+	bot, err := NewBot(subscriptionRepo, botToken, tcpServer)
 	if err != nil {
 		return nil, err
 	}
@@ -45,5 +60,6 @@ func NewAlert(client pahomqtt.Client, subscriptionRepo *repository.SubscriptionR
 		Client: client,	
 		Bot: bot,
 		SubscriptionRepo: subscriptionRepo,
+		FallEventRepo: fallEventRepo,
 	}, nil
 }

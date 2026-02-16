@@ -24,20 +24,23 @@ func main() {
 	}
 	defer db.Close()
 
+
+	publishClient := mqtt.CreateClient("publisher")
+	tcpServer := tcp.NewTCPServer(":"+config.TCPPort, publishClient)
+
 	subscriptionRepo := repository.NewSubscriptionRepo(db)
+	fallEventRepo := repository.NewFallEventRepo(db)
 	alertClient := mqtt.CreateClient("alert-subscriber")
-	alertService, err := alert.NewAlert(alertClient, subscriptionRepo, config.BotToken)
+
+	alertService, err := alert.NewAlert(alertClient, subscriptionRepo, fallEventRepo, config.BotToken, tcpServer)
 	if err != nil {
 		log.Fatal("Error creating alert service: ", err)
 	}
 	alertService.Start()
 
 	// Start listening for telegram commands
-	go alertService.Bot.ListenForCommands(subscriptionRepo)
+	go alertService.Bot.ListenForCommands(subscriptionRepo, fallEventRepo)
 
-
-	publishClient := mqtt.CreateClient("publisher")
-	tcpServer := tcp.NewTCPServer(":"+config.TCPPort, publishClient)
 
 	// Define Route Handlers
 	clients := map[string]pahomqtt.Client{
