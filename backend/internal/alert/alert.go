@@ -19,7 +19,8 @@ type Alert struct {
 
 
 func (a *Alert) Start() {
-    a.Client.Subscribe("fall-detection/+/alerts", 1,func(client pahomqtt.Client, msg pahomqtt.Message) {
+    log.Println("[Alert] Subscribing to fall-detection/+/alerts...")
+    token := a.Client.Subscribe("fall-detection/+/alerts", 1, func(client pahomqtt.Client, msg pahomqtt.Message) {
 		topic := msg.Topic()
 		parts := strings.Split(topic, "/")
 		boardID := parts[1]
@@ -51,6 +52,12 @@ func (a *Alert) Start() {
 			a.Bot.SendFallAlert(chatID, boardID, eventID)
 		}
     })
+    token.Wait()
+    if token.Error() != nil {
+        log.Printf("[Alert] Subscribe FAILED: %v", token.Error())
+    } else {
+        log.Println("[Alert] Subscribe SUCCESS")
+    }
 }
 
 func NewAlert(client pahomqtt.Client, subscriptionRepo *repository.SubscriptionRepo, fallEventRepo *repository.FallEventRepo, botToken string, tcpServer *tcp.TCPServer) (*Alert,error) {
