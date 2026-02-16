@@ -44,6 +44,7 @@ func NewTCPServer(addr string, pub pahomqtt.Client) *TCPServer {
 		Publisher: pub,
 		Boards:    make(map[string]*Board),
 		Conns:     make(map[string]net.Conn),
+		BoardToConn: make(map[string]string),
 	}
 }
 
@@ -163,6 +164,11 @@ func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 				LastSeen:    time.Now(),
 			}
 			s.BoardsMu.Unlock()
+
+			s.BoardToConnMu.Lock()
+			s.BoardToConn[boardID] = id
+			s.BoardToConnMu.Unlock()
+
 			registered = true
 		} else {
 			// Update LastSeen since message
