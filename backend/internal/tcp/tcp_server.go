@@ -209,8 +209,11 @@ func (s *TCPServer) GetBoards() []*Board {
 }
 
 func (s *TCPServer) WriteToBoard(boardID string, message string) error {
+
+	id := strings.TrimPrefix(boardID, "board")
+
 	s.BoardToConnMu.RLock()
-	connID, exists := s.BoardToConn[boardID]
+	connID, exists := s.BoardToConn[id]
 	s.BoardToConnMu.RUnlock()
 
 	if !exists {
