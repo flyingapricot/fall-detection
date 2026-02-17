@@ -29,6 +29,9 @@ type TCPServer struct {
 
 	Boards   map[string]*Board
 	BoardsMu sync.RWMutex
+
+	FallState map[string]string // Tracks previous fall status per board
+	FallStateMu sync.RWMutex
 }
 
 const (
@@ -40,6 +43,7 @@ func NewTCPServer(addr string, pub pahomqtt.Client) *TCPServer {
 		Addr:      addr,
 		Publisher: pub,
 		Boards:    make(map[string]*Board),
+		FallState: make(map[string]string),
 	}
 }
 
@@ -178,14 +182,22 @@ func (s *TCPServer) handleDataSocket(conn net.Conn, boardID string) error {
 		}
 
 		sensorTopic := "fall-detection/board" + boardID + "/sensors"
-		alertTopic := "fall-detection/board" + boardID + "/alerts"
 
 		mqtt.Publish(s.Publisher, sensorTopic, line)
 
-		if fields[6] == "1" {
+		currentFall := fields[6]
+
+		s.FallStateMu.Lock()
+		prevFall := s.FallState[boardID]
+
+		if currentFall == "1" && prevFall != "1" {
+			alertTopic := "fall-detection/board" + boardID + "/alerts"
 			log.Printf("[TCP Server] Sending alert to topic: %s", alertTopic)
 			mqtt.Publish(s.Publisher, alertTopic, line)
 		}
+
+		s.FallState[boardID] = currentFall
+		s.FallStateMu.Unlock()
 
 	}
 }
