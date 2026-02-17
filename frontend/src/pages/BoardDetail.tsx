@@ -30,7 +30,7 @@ function exportCSV(readings: SensorReading[], boardId: string) {
 export default function BoardDetail() {
   const { id } = useParams<{ id: string }>();
   const {
-    readings, latestReading, isConnected, isBoardActive, isPaused, togglePause, error,
+    readings, isConnected, isBoardActive, isPaused, fallActive, togglePause, error,
   } = useMqtt(id!);
 
   const statusColor = !isConnected
@@ -92,7 +92,7 @@ export default function BoardDetail() {
 
       {/* Fall alert */}
       <div className="mb-4">
-        <FallAlertBanner active={latestReading?.fallStatus ?? false} />
+        <FallAlertBanner active={fallActive} />
       </div>
 
       {/* Charts */}

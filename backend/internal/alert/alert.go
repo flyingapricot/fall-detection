@@ -68,7 +68,7 @@ func (a *Alert) Start() {
 }
 
 func NewAlert(client pahomqtt.Client, subscriptionRepo *repository.SubscriptionRepo, fallEventRepo *repository.FallEventRepo, botToken string, tcpServer *tcp.TCPServer) (*Alert,error) {
-	bot, err := NewBot(subscriptionRepo, botToken, tcpServer)
+	bot, err := NewBot(subscriptionRepo, botToken, tcpServer,client)
 	if err != nil {
 		return nil, err
 	}
