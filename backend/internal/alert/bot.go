@@ -101,17 +101,6 @@ func (b *Bot) ListenForCommands(subscriptionRepo *repository.SubscriptionRepo, f
 			} else {
 				b.api.Send(tgbotapi.NewMessage(chatID, "Unsubscribed from "+boardID))
 			}
-		case "fall":
-			if !boardIDPattern.MatchString(boardID) {
-				b.api.Send(tgbotapi.NewMessage(chatID, "Invalid format. Usage: /fall board#number"))
-				continue
-			}
-			//err := b.TCPServer.WriteToBoard(boardID, "FALL\n")
-			//if err != nil {
-			//	b.api.Send(tgbotapi.NewMessage(chatID, "Failed to send fall signal: "+err.Error()))
-			//} else {
-			//	b.api.Send(tgbotapi.NewMessage(chatID, "Fall signal sent to "+boardID))
-			//}
 		default:
 			b.api.Send(tgbotapi.NewMessage(chatID, "Unknown command. Available commands:\n/subscribe board#number\n/unsubscribe board#number"))
 		}
@@ -139,8 +128,6 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
 
 		// Resolve the event
 		repo.Resolve(context.Background(), eventID, callback.From.ID)
-
-		//b.TCPServer.WriteToBoard(boardID, "ACK")
 
 		// Answer the callback (removes loading state)
 		b.api.Request(tgbotapi.NewCallback(callback.ID, "Resolved!"))
