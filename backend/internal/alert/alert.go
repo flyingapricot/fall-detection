@@ -37,6 +37,9 @@ func (a *Alert) Start() {
 		if err == nil && existing != nil {
 			// Already an active fall, skip
 			return
+		} else if err != nil {
+			log.Printf("Failed to get active fall event: %v", err)
+			return
 		}
 
 		// 2. Create new fall event
