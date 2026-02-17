@@ -14,6 +14,7 @@ export function useMqtt(boardId: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [isBoardActive, setIsBoardActive] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [fallActive, setFallActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<mqtt.MqttClient | null>(null);
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -29,13 +30,11 @@ export function useMqtt(boardId: string) {
     setLatestReading(reading);
     resetStaleTimer();
 
-    // Always buffer
     bufferRef.current = [...bufferRef.current, reading];
     if (bufferRef.current.length > MAX_READINGS) {
       bufferRef.current = bufferRef.current.slice(bufferRef.current.length - MAX_READINGS);
     }
 
-    // Only update displayed readings when not paused
     setIsPaused((paused) => {
       if (!paused) {
         setReadings([...bufferRef.current]);
@@ -48,7 +47,6 @@ export function useMqtt(boardId: string) {
     setIsPaused((prev) => {
       const next = !prev;
       if (!next) {
-        // Resuming — sync displayed readings with buffer
         setReadings([...bufferRef.current]);
       }
       return next;
@@ -56,7 +54,8 @@ export function useMqtt(boardId: string) {
   }, []);
 
   useEffect(() => {
-    const topic = `fall-detection/board${boardId}/sensors`;
+    const sensorsTopic = `fall-detection/board${boardId}/sensors`;
+    const alertsTopic = `fall-detection/board${boardId}/alerts`;
 
     let client: mqtt.MqttClient;
     try {
@@ -75,11 +74,23 @@ export function useMqtt(boardId: string) {
     client.on("connect", () => {
       setIsConnected(true);
       setError(null);
-      client.subscribe(topic);
+      client.subscribe([sensorsTopic, alertsTopic]);
     });
 
-    client.on("message", (_topic, payload) => {
-      const reading = parseSensorCSV(payload.toString());
+    client.on("message", (topic, payload) => {
+      const msg = payload.toString();
+
+      if (topic === alertsTopic) {
+        if (msg.trim() === "RESOLVED") {
+          setFallActive(false);
+        } else {
+          setFallActive(true);
+        }
+        return;
+      }
+
+      // Sensors topic
+      const reading = parseSensorCSV(msg);
       if (reading) addReading(reading);
     });
 
@@ -89,11 +100,11 @@ export function useMqtt(boardId: string) {
 
     return () => {
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
-      client.unsubscribe(topic);
+      client.unsubscribe([sensorsTopic, alertsTopic]);
       client.end();
       clientRef.current = null;
     };
   }, [boardId, addReading]);
 
-  return { readings, latestReading, isConnected, isBoardActive, isPaused, togglePause, error };
+  return { readings, latestReading, isConnected, isBoardActive, isPaused, fallActive, togglePause, error };
 }

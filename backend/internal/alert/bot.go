@@ -2,6 +2,7 @@ package alert
 
 import (
 	"context"
+	"fall-detection/internal/mqtt"
 	"fall-detection/internal/repository"
 	"fall-detection/internal/tcp"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -20,6 +22,7 @@ type Bot struct {
 	chatIDs []int64
 	SubscriptionRepo *repository.SubscriptionRepo
 	TCPServer *tcp.TCPServer
+	AlertClient pahomqtt.Client
 }
 
 func (b *Bot) SendAlert(message string) error {
@@ -42,7 +45,7 @@ func (b *Bot) SendMessage(chatID int64, text string) error {
 }
 
 
-func NewBot(subscriptionRepo *repository.SubscriptionRepo, botToken string, tcpServer *tcp.TCPServer) (*Bot,error) {
+func NewBot(subscriptionRepo *repository.SubscriptionRepo, botToken string, tcpServer *tcp.TCPServer, alertClient pahomqtt.Client) (*Bot,error) {
 	api, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		return nil,err
@@ -145,5 +148,8 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
         // Update the message
         b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID, 
             fmt.Sprintf("✅ Resolved by @%s", callback.From.UserName)))
+		
+		// After resolving, send a message to the alerts topic
+		mqtt.Publish(b.AlertClient, "fall-detection/" + boardID + "/alerts", "RESOLVED")
     }
 }
