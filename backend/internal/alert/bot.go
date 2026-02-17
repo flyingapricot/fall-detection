@@ -137,7 +137,7 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
         // Resolve the event
         repo.Resolve(context.Background(), eventID, callback.From.ID)
 
-		b.TCPServer.WriteToBoard(boardID, "ACK\n")
+		b.TCPServer.WriteToBoard(boardID, "ACK")
 
         // Answer the callback (removes loading state)
         b.api.Request(tgbotapi.NewCallback(callback.ID, "Resolved!"))

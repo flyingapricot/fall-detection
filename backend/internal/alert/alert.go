@@ -51,6 +51,8 @@ func (a *Alert) Start() {
 		if err != nil {
 			log.Printf("Failed to get subscribers for board %s: %v", boardID, err)
 			return
+		} else {
+			log.Printf("Subscribers for board %s: %v", boardID, chatIDs)
 		}
 
 		for _, chatID := range chatIDs {
