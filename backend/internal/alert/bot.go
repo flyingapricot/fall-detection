@@ -55,6 +55,7 @@ func NewBot(subscriptionRepo *repository.SubscriptionRepo, botToken string, tcpS
 		api: api,
 		SubscriptionRepo: subscriptionRepo,
 		TCPServer: tcpServer,
+		AlertClient: alertClient,
 	}, nil
 }
 
