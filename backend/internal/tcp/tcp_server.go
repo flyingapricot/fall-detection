@@ -15,9 +15,12 @@ import (
 )
 
 type Board struct {
-	ID          string
+	ID          string // for board1, ID = 1
 	ConnectedAt time.Time
-	LastSeen    time.Time
+	LastSeen    time.Time // Last seen time depends on response from DataSocket
+
+	RecvSocket net.Conn  // Socket on board that recieves commands
+	DataSocket net.Conn  // Socket on board that sends data
 }
 
 type TCPServer struct {
@@ -26,12 +29,6 @@ type TCPServer struct {
 
 	Boards   map[string]*Board
 	BoardsMu sync.RWMutex
-
-	Conns   map[string]net.Conn
-	ConnsMu sync.RWMutex
-
-	BoardToConn   map[string]string // boardID -> connID
-	BoardToConnMu sync.RWMutex
 }
 
 const (
@@ -43,8 +40,6 @@ func NewTCPServer(addr string, pub pahomqtt.Client) *TCPServer {
 		Addr:      addr,
 		Publisher: pub,
 		Boards:    make(map[string]*Board),
-		Conns:     make(map[string]net.Conn),
-		BoardToConn: make(map[string]string),
 	}
 }
 
@@ -64,43 +59,91 @@ func (s *TCPServer) Start() error {
 			continue
 		}
 
-		id := conn.RemoteAddr().String()
-		s.ConnsMu.Lock()
-		s.Conns[id] = conn
-		s.ConnsMu.Unlock()
-
-		go s.readBoard(id, conn)
+		go s.handleConnection(conn)
 	}
 }
 
-func (s *TCPServer) readBoard(id string, conn net.Conn) error {
+func (s* TCPServer) handleConnection(conn net.Conn) error {
+	reader := bufio.NewReader(conn)
+	
+	firstMsg, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+
+	line := strings.TrimSpace(firstMsg)
+	if strings.HasPrefix(line, "TYPE:CMD:") {
+		boardID := strings.TrimPrefix(line, "TYPE:CMD:")
+		s.registerBoard(boardID , "CMD",conn)
+		s.handleRecvSocket(conn, boardID)
+	} else if strings.HasPrefix(line, "TYPE:DATA:") {
+		boardID := strings.TrimPrefix(line, "TYPE:DATA:")
+		s.registerBoard(boardID , "DATA",conn)
+		s.handleDataSocket(conn, boardID)
+	} else {
+		return fmt.Errorf("invalid message: %s", line)
+	}
+
+	return nil
+}
+
+func (s *TCPServer) registerBoard(boardID, socketType string, conn net.Conn) error {
+    s.BoardsMu.Lock()
+
+    b, exists := s.Boards[boardID]
+    if !exists {
+        b = &Board{
+            ID:          boardID,
+            ConnectedAt: time.Now(),
+        }
+        s.Boards[boardID] = b
+    }
+
+    var old net.Conn
+    switch socketType {
+    case "CMD":
+        old = b.RecvSocket
+        b.RecvSocket = conn
+    case "DATA":
+        old = b.DataSocket
+        b.DataSocket = conn
+    default:
+        s.BoardsMu.Unlock()
+        _ = conn.Close()
+        return fmt.Errorf("invalid socketType: %s", socketType)
+    }
+
+    b.LastSeen = time.Now()
+    s.BoardsMu.Unlock()
+
+    if old != nil {
+        _ = old.Close()
+    }
+    return nil
+}
+
+func (s *TCPServer) handleDataSocket(conn net.Conn, boardID string) error {
 	defer conn.Close()
 
 	// Unregister connection when exiting
 	defer func() {
-		s.ConnsMu.Lock()
-		delete(s.Conns, id)
-		s.ConnsMu.Unlock()
-
 		s.BoardsMu.Lock()
-		delete(s.Boards, id)
+		s.Boards[boardID].DataSocket = nil
 		s.BoardsMu.Unlock()
 	}()
 
 	reader := bufio.NewReader(conn)
-	var boardID string
-	registered := false
 
 	for {
-		// Timeout if no data received within 5 seconds
+		// Timeout if no data received within 5 seconds 
 		conn.SetReadDeadline(time.Now().Add(staleAfter))
 		message, err := reader.ReadString('\n')
 
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("Read error: %v", err, conn.RemoteAddr())
+				fmt.Printf("Read error: %v\n", err, conn.RemoteAddr())
 			} else {
-				log.Printf("Read error: %v", err)
+				log.Printf("Read error: %v\n", err)
 			}
 			return err
 		}
@@ -111,6 +154,11 @@ func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 			// No message received from the board
 			continue
 		}
+
+		// Update lastSeen
+		s.BoardsMu.Lock()
+		s.Boards[boardID].LastSeen = time.Now()
+		s.BoardsMu.Unlock()
 
 		// 0 - 2 is accelerometer data
 		// 3 - 5 is gyrometer data
@@ -126,61 +174,6 @@ func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 			continue
 		}
 
-		// First message is to establish board identity
-		if !registered {
-			boardID = fields[7]
-
-			s.BoardToConnMu.RLock()
-			existing, exists := s.BoardToConn[boardID]
-			s.BoardToConnMu.RUnlock()
-
-			if exists {
-				s.BoardsMu.RLock()
-				existingBoard := s.Boards[existing]
-				s.BoardsMu.RUnlock()
-
-				stale := existingBoard == nil || time.Since(existingBoard.LastSeen) > 10*time.Second
-				if !stale {
-					return fmt.Errorf("duplicate boardID %s", boardID)
-				} else {
-					// Connection is stale
-					s.ConnsMu.RLock()
-					oldConn := s.Conns[existing]
-					s.ConnsMu.RUnlock()
-
-					if oldConn != nil {
-						log.Printf("Closing stale connection for board %s (%s)", boardID, existing)
-						_ = oldConn.Close()
-					}
-				}
-
-			}
-
-			s.BoardsMu.Lock()
-			s.Boards[id] = &Board{
-				ID:          boardID,
-				ConnectedAt: time.Now(),
-				LastSeen:    time.Now(),
-			}
-			s.BoardsMu.Unlock()
-
-			s.BoardToConnMu.Lock()
-			s.BoardToConn[boardID] = id
-			s.BoardToConnMu.Unlock()
-
-			registered = true
-		} else {
-			// Update LastSeen since message
-			// has been successfully receieved
-			now := time.Now()
-			s.BoardsMu.Lock()
-			b := s.Boards[id]
-			if b != nil {
-				b.LastSeen = now
-			}
-			s.BoardsMu.Unlock()
-		}
-
 		sensorTopic := "fall-detection/board" + boardID + "/sensors"
 		alertTopic := "fall-detection/board" + boardID + "/alerts"
 
@@ -192,6 +185,34 @@ func (s *TCPServer) readBoard(id string, conn net.Conn) error {
 		}
 
 	}
+}
+
+func (s *TCPServer) handleRecvSocket(conn net.Conn, boardID string) error {
+	defer conn.Close()
+	fmt.Printf("Recv Socket connected for board%s\n",boardID)
+
+	defer func() {
+		s.BoardsMu.Lock()
+		s.Boards[boardID].RecvSocket = nil
+		s.BoardsMu.Unlock()
+	}()
+
+	buf := make([]byte,1)
+	for {
+		conn.SetReadDeadline(time.Now().Add(staleAfter))
+		_, err := conn.Read(buf)
+		if err != nil {
+            if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+                // Just a timeout, connection still alive
+                continue
+            }
+
+			// Actual disconnect
+			fmt.Printf("Recv Socket disconnected for board%s\n", boardID)
+			return err
+		}
+	}
+
 }
 
 func (s *TCPServer) GetBoards() []*Board {
@@ -208,26 +229,22 @@ func (s *TCPServer) GetBoards() []*Board {
 	return result
 }
 
-func (s *TCPServer) WriteToBoard(boardID string, message string) error {
+func (s *TCPServer) WriteToBoard(rawBoardID string, message string) error {
 
-	id := strings.TrimPrefix(boardID, "board")
+	boardID := strings.TrimPrefix(rawBoardID, "board")
 
-	s.BoardToConnMu.RLock()
-	connID, exists := s.BoardToConn[id]
-	s.BoardToConnMu.RUnlock()
+	s.BoardsMu.RLock()
+	board, exists := s.Boards[boardID]
+	s.BoardsMu.RUnlock()
 
 	if !exists {
 		return fmt.Errorf("board %s not found", boardID)
 	}
 
-	s.ConnsMu.RLock()
-	conn := s.Conns[connID]
-	s.ConnsMu.RUnlock()
-
-	if conn == nil {
-		return fmt.Errorf("connection for board %s not found", boardID)
+	if board.RecvSocket == nil {
+		return fmt.Errorf("Recv Socket Connection for board %s not found", boardID)
 	}
 
-	_, err := conn.Write([]byte(message))
+	_, err := board.RecvSocket.Write([]byte(message))
 	return err
 }
