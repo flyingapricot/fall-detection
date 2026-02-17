@@ -128,7 +128,10 @@ func (s *TCPServer) handleDataSocket(conn net.Conn, boardID string) error {
 	// Unregister connection when exiting
 	defer func() {
 		s.BoardsMu.Lock()
-		s.Boards[boardID].DataSocket = nil
+		b := s.Boards[boardID]
+		if b != nil && b.DataSocket == conn {
+			b.DataSocket = nil
+		}
 		s.BoardsMu.Unlock()
 	}()
 
@@ -193,7 +196,10 @@ func (s *TCPServer) handleRecvSocket(conn net.Conn, boardID string) error {
 
 	defer func() {
 		s.BoardsMu.Lock()
-		s.Boards[boardID].RecvSocket = nil
+		b := s.Boards[boardID]
+		if b != nil && b.RecvSocket == conn {
+			b.RecvSocket = nil
+		}
 		s.BoardsMu.Unlock()
 	}()
 
