@@ -24,7 +24,6 @@ func main() {
 	}
 	defer db.Close()
 
-
 	publishClient := mqtt.CreateClient("publisher")
 	tcpServer := tcp.NewTCPServer(":"+config.TCPPort, publishClient)
 
@@ -43,7 +42,6 @@ func main() {
 	// Start listening for telegram commands
 	go alertService.Bot.ListenForCommands(subscriptionRepo, fallEventRepo)
 
-
 	// Define Route Handlers
 	clients := map[string]pahomqtt.Client{
 		"publisher": publishClient,
@@ -54,7 +52,7 @@ func main() {
 
 	httpServer := http.New(config.HTTPPort, healthHandler, boardHandler, subscribersHandler)
 
-	go tcpServer.Start()
+	go tcpServer.StartUDPListener()
 	go httpServer.Run()
 
 	select {} // Block forever
