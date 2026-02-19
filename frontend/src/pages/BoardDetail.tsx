@@ -110,7 +110,7 @@ export default function BoardDetail() {
 
       {/* Console */}
       <div className="mb-4">
-        <SensorConsole readings={readings} isPaused={isPaused} />
+        <SensorConsole readings={readings} isPaused={isPaused} fallActive={fallActive} />
       </div>
 
       {/* Fall event history */}
