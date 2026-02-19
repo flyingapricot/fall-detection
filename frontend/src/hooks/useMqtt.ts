@@ -22,6 +22,7 @@ export function useMqtt(boardId: string) {
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferRef = useRef<SensorReading[]>([]);
+  const boardFallStateRef = useRef(false); // tracks board's actual fall state
 
   const clearToast = useCallback(() => setToast(null), []);
 
@@ -103,8 +104,9 @@ export function useMqtt(boardId: string) {
 
       addReading(reading);
 
-      if (reading.fallStatus) {
-        // Fall detected — show banner and (re)start auto-dismiss timer
+      // Only trigger on 0→1 transition, not on every reading already in fall state.
+      // This prevents re-firing after an early ACK while the board is still falling.
+      if (reading.fallStatus && !boardFallStateRef.current) {
         if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
         setFallActive(true);
         fallTimerRef.current = setTimeout(() => {
@@ -112,6 +114,7 @@ export function useMqtt(boardId: string) {
           setToast("Fall event closed by timeout");
         }, FALL_AUTO_DISMISS);
       }
+      boardFallStateRef.current = reading.fallStatus;
     });
 
     client.on("error", (err) => setError(err.message));
