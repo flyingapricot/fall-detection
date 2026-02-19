@@ -19,8 +19,7 @@ type Board struct {
 	ConnectedAt time.Time
 	LastSeen    time.Time // Last seen time depends on response from DataSocket
 
-	RecvSocket net.Conn // Socket on board that recieves commands
-	DataSocket net.Conn // Socket on board that sends data
+	DataSocket net.Conn
 }
 
 type TCPServer struct {
@@ -68,78 +67,10 @@ func (s *TCPServer) Start() error {
 }
 
 func (s *TCPServer) handleConnection(conn net.Conn) error {
-	reader := bufio.NewReader(conn)
-
-	firstMsg, err := reader.ReadString('\n')
-	if err != nil {
-		return err
-	}
-
-	line := strings.TrimSpace(firstMsg)
-	if strings.HasPrefix(line, "TYPE:CMD:") {
-		boardID := strings.TrimPrefix(line, "TYPE:CMD:")
-		s.registerBoard(boardID, "CMD", conn)
-		s.handleRecvSocket(conn, boardID)
-	} else if strings.HasPrefix(line, "TYPE:DATA:") {
-		boardID := strings.TrimPrefix(line, "TYPE:DATA:")
-		s.registerBoard(boardID, "DATA", conn)
-		s.handleDataSocket(conn, boardID)
-	} else {
-		return fmt.Errorf("invalid message: %s", line)
-	}
-
-	return nil
-}
-
-func (s *TCPServer) registerBoard(boardID, socketType string, conn net.Conn) error {
-	s.BoardsMu.Lock()
-
-	b, exists := s.Boards[boardID]
-	if !exists {
-		b = &Board{
-			ID:          boardID,
-			ConnectedAt: time.Now(),
-		}
-		s.Boards[boardID] = b
-	}
-
-	var old net.Conn
-	switch socketType {
-	case "CMD":
-		old = b.RecvSocket
-		b.RecvSocket = conn
-	case "DATA":
-		old = b.DataSocket
-		b.DataSocket = conn
-	default:
-		s.BoardsMu.Unlock()
-		_ = conn.Close()
-		return fmt.Errorf("invalid socketType: %s", socketType)
-	}
-
-	b.LastSeen = time.Now()
-	s.BoardsMu.Unlock()
-
-	if old != nil {
-		_ = old.Close()
-	}
-	return nil
-}
-
-func (s *TCPServer) handleDataSocket(conn net.Conn, boardID string) error {
 	defer conn.Close()
 
-	// Unregister connection when exiting
-	defer func() {
-		s.BoardsMu.Lock()
-		b := s.Boards[boardID]
-		if b != nil && b.DataSocket == conn {
-			b.DataSocket = nil
-		}
-		s.BoardsMu.Unlock()
-	}()
-
 	reader := bufio.NewReader(conn)
+	registered := false
 
 	for {
 		// Timeout if no data received within 5 seconds
@@ -162,6 +93,59 @@ func (s *TCPServer) handleDataSocket(conn net.Conn, boardID string) error {
 			continue
 		}
 
+		// Extract the boardID from this valid message
+		fields := strings.Split(line, ",")
+
+		// TODO: Create and Move verification into a different package
+		if len(fields) != 8 {
+			log.Printf("Invalid message (len=%d) from %s: %q", len(fields), conn.RemoteAddr(), line)
+			continue
+		}
+
+		boardID := fields[7]
+
+		if !registered {
+			// Board has been connected for the first time
+
+			// Check if board exists
+			s.BoardsMu.Lock()
+			existingBoard, exists := s.Boards[boardID]
+			var oldConn net.Conn
+
+			if exists {
+				// Board exists, this may either be a duplicate connection
+				// or might be a stale connection
+				// Both will be deleted and disconnected
+
+				if time.Now().Sub(existingBoard.LastSeen) < staleAfter {
+					// Duplicate Connection trying to connect, reject
+					log.Println("[TCP SERVER] Duplicate connection")
+				} else {
+					// Stale connection
+					log.Println("[TCP SERVER] Duplicate connection")
+				}
+
+				oldConn = existingBoard.DataSocket
+
+			} else {
+				s.Boards[boardID] = &Board{
+					ID:         boardID,
+					DataSocket: conn,
+				}
+			}
+
+			s.Boards[boardID].ConnectedAt = time.Now()
+			s.BoardsMu.Unlock()
+
+			// Disconnect old connection
+			if oldConn != nil {
+				oldConn.Close()
+			}
+
+			registered = true
+
+		}
+
 		// Update lastSeen
 		s.BoardsMu.Lock()
 		s.Boards[boardID].LastSeen = time.Now()
@@ -173,14 +157,6 @@ func (s *TCPServer) handleDataSocket(conn net.Conn, boardID string) error {
 		// 7 is the board number
 
 		// Publish to MQTT Broker
-		fields := strings.Split(line, ",")
-
-		// TODO: Create and Move verification into a different package
-		if len(fields) != 8 {
-			log.Printf("Invalid message (len=%d) from %s: %q", len(fields), conn.RemoteAddr(), line)
-			continue
-		}
-
 		sensorTopic := "fall-detection/board" + boardID + "/sensors"
 
 		mqtt.Publish(s.Publisher, sensorTopic, line)
@@ -199,38 +175,17 @@ func (s *TCPServer) handleDataSocket(conn net.Conn, boardID string) error {
 		s.FallState[boardID] = currentFall
 		s.FallStateMu.Unlock()
 
-	}
-}
-
-func (s *TCPServer) handleRecvSocket(conn net.Conn, boardID string) error {
-	defer conn.Close()
-	fmt.Printf("Recv Socket connected for board%s\n", boardID)
-
-	defer func() {
-		s.BoardsMu.Lock()
-		b := s.Boards[boardID]
-		if b != nil && b.RecvSocket == conn {
-			b.RecvSocket = nil
-		}
-		s.BoardsMu.Unlock()
-	}()
-
-	buf := make([]byte, 1)
-	for {
-		conn.SetReadDeadline(time.Now().Add(staleAfter))
-		_, err := conn.Read(buf)
-		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				// Just a timeout, connection still alive
-				continue
+		// Unregister connection when exiting
+		defer func() {
+			s.BoardsMu.Lock()
+			b := s.Boards[boardID]
+			if b != nil && b.DataSocket == conn {
+				b.DataSocket = nil
 			}
+			s.BoardsMu.Unlock()
+		}()
 
-			// Actual disconnect
-			fmt.Printf("Recv Socket disconnected for board%s\n", boardID)
-			return err
-		}
 	}
-
 }
 
 func (s *TCPServer) GetBoards() []*Board {
@@ -245,92 +200,4 @@ func (s *TCPServer) GetBoards() []*Board {
 	s.BoardsMu.RUnlock()
 
 	return result
-}
-
-func (s *TCPServer) WriteToBoard(rawBoardID string, message string) error {
-
-	boardID := strings.TrimPrefix(rawBoardID, "board")
-
-	s.BoardsMu.RLock()
-	board, exists := s.Boards[boardID]
-	s.BoardsMu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("board %s not found", boardID)
-	}
-
-	if board.RecvSocket == nil {
-		return fmt.Errorf("Recv Socket Connection for board %s not found", boardID)
-	}
-
-	_, err := board.RecvSocket.Write([]byte(message))
-	return err
-}
-
-func (s *TCPServer) StartUDPListener() {
-	addr := fmt.Sprintf("%s", s.Addr)
-	conn, err := net.ListenPacket("udp", addr)
-	if err != nil {
-		log.Fatalf("UDP listen error: %v", err)
-	}
-	defer conn.Close()
-	log.Printf("UDP listener started on %s", addr)
-
-	buf := make([]byte, 1024)
-	for {
-		n, remoteAddr, err := conn.ReadFrom(buf)
-		if err != nil {
-			log.Printf("UDP read error: %v", err)
-			continue
-		}
-
-		line := strings.TrimSpace(string(buf[:n]))
-		if line == "" {
-			continue
-		}
-
-		// First message is identification
-		if strings.HasPrefix(line, "TYPE:DATA:") {
-			boardID := strings.TrimPrefix(line, "TYPE:DATA:")
-			log.Printf("UDP board %s registered from %s", boardID, remoteAddr)
-
-			s.BoardsMu.Lock()
-			if s.Boards[boardID] == nil {
-				s.Boards[boardID] = &Board{}
-			}
-			s.Boards[boardID].LastSeen = time.Now()
-			s.BoardsMu.Unlock()
-			continue
-		}
-
-		fields := strings.Split(line, ",")
-		if len(fields) != 8 {
-			continue
-		}
-
-		boardID := fields[7]
-
-		s.BoardsMu.Lock()
-		if s.Boards[boardID] == nil {
-			s.Boards[boardID] = &Board{}
-		}
-		s.Boards[boardID].LastSeen = time.Now()
-		s.BoardsMu.Unlock()
-
-		// Publish sensor data
-		sensorTopic := "fall-detection/board" + boardID + "/sensors"
-		mqtt.Publish(s.Publisher, sensorTopic, line)
-
-		// Transition detection
-		currentFall := fields[6]
-		s.FallStateMu.Lock()
-		prevFall := s.FallState[boardID]
-		if currentFall == "1" && prevFall != "1" {
-			alertTopic := "fall-detection/board" + boardID + "/alerts"
-			log.Printf("[UDP] Sending alert for board %s", boardID)
-			mqtt.Publish(s.Publisher, alertTopic, line)
-		}
-		s.FallState[boardID] = currentFall
-		s.FallStateMu.Unlock()
-	}
 }

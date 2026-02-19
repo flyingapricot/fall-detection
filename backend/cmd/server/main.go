@@ -52,7 +52,7 @@ func main() {
 
 	httpServer := http.New(config.HTTPPort, healthHandler, boardHandler, subscribersHandler)
 
-	go tcpServer.StartUDPListener()
+	go tcpServer.Start()
 	go httpServer.Run()
 
 	select {} // Block forever
