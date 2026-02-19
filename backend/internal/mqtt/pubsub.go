@@ -17,5 +17,4 @@ func sub(client mqtt.Client, topic string) {
 func Publish(client mqtt.Client, topic string, message string) {
 	token := client.Publish(topic, 0, false, message)
 	token.Wait()
-	time.Sleep(time.Second)
 }
