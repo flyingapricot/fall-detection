@@ -71,7 +71,7 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 
 	reader := bufio.NewReader(conn)
 	registered := false
-	var boardID string;
+	var boardID string
 
 	defer func() {
 		if boardID != "" {
@@ -83,7 +83,6 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 			s.BoardsMu.Unlock()
 		}
 	}()
-
 
 	for {
 		// Timeout if no data received within 5 seconds
@@ -135,7 +134,7 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 					log.Println("[TCP SERVER] Duplicate connection")
 				} else {
 					// Stale connection
-					log.Println("[TCP SERVER] Duplicate connection")
+					log.Println("[TCP SERVER] Stale connection")
 				}
 
 				oldConn = existingBoard.DataSocket

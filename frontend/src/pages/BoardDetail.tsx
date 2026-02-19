@@ -4,6 +4,8 @@ import SensorChart from "../components/SensorChart";
 import SensorConsole from "../components/SensorConsole";
 import FallAlertBanner from "../components/FallAlertBanner";
 import SubscriberList from "../components/SubscriberList";
+import FallEventHistory from "../components/FallEventHistory";
+import Toast from "../components/Toast";
 import type { SensorReading } from "../types/sensor";
 
 function exportCSV(readings: SensorReading[], boardId: string) {
@@ -30,7 +32,7 @@ function exportCSV(readings: SensorReading[], boardId: string) {
 export default function BoardDetail() {
   const { id } = useParams<{ id: string }>();
   const {
-    readings, isConnected, isBoardActive, isPaused, fallActive, togglePause, error,
+    readings, isConnected, isBoardActive, isPaused, fallActive, toast, clearToast, togglePause, error,
   } = useMqtt(id!);
 
   const statusColor = !isConnected
@@ -107,7 +109,14 @@ export default function BoardDetail() {
       </div>
 
       {/* Console */}
-      <SensorConsole readings={readings} isPaused={isPaused} />
+      <div className="mb-4">
+        <SensorConsole readings={readings} isPaused={isPaused} />
+      </div>
+
+      {/* Fall event history */}
+      <FallEventHistory boardId={id!} />
+
+      <Toast message={toast} onDismiss={clearToast} />
     </div>
   );
 }

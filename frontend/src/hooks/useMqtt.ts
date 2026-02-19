@@ -7,7 +7,7 @@ const USERNAME = import.meta.env.VITE_MQTT_USERNAME as string;
 const PASSWORD = import.meta.env.VITE_MQTT_PASSWORD as string;
 const MAX_READINGS = 200;
 const STALE_TIMEOUT = 5000;
-const FALL_AUTO_DISMISS = 3 * 60 * 1000; // 3 minutes, matches backend TTL
+const FALL_AUTO_DISMISS = 30 * 1000; // 30 seconds, matches backend TTL
 
 export function useMqtt(boardId: string) {
   const [readings, setReadings] = useState<SensorReading[]>([]);
@@ -16,11 +16,14 @@ export function useMqtt(boardId: string) {
   const [isBoardActive, setIsBoardActive] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [fallActive, setFallActive] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<mqtt.MqttClient | null>(null);
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferRef = useRef<SensorReading[]>([]);
+
+  const clearToast = useCallback(() => setToast(null), []);
 
   const resetStaleTimer = useCallback(() => {
     if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
@@ -84,9 +87,12 @@ export function useMqtt(boardId: string) {
 
       // Alerts topic: only used for RESOLVED signal
       if (topic === alertsTopic) {
-        if (msg.trim() === "RESOLVED") {
+        const trimmed = msg.trim();
+        if (trimmed.startsWith("RESOLVED")) {
           if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
           setFallActive(false);
+          const username = trimmed.includes(":") ? trimmed.split(":")[1] : null;
+          setToast(username ? `Fall acknowledged by @${username}` : "Fall acknowledged");
         }
         return;
       }
@@ -101,7 +107,10 @@ export function useMqtt(boardId: string) {
         // Fall detected — show banner and (re)start auto-dismiss timer
         if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
         setFallActive(true);
-        fallTimerRef.current = setTimeout(() => setFallActive(false), FALL_AUTO_DISMISS);
+        fallTimerRef.current = setTimeout(() => {
+          setFallActive(false);
+          setToast("Fall event closed by timeout");
+        }, FALL_AUTO_DISMISS);
       }
     });
 
@@ -118,5 +127,5 @@ export function useMqtt(boardId: string) {
     };
   }, [boardId, addReading]);
 
-  return { readings, latestReading, isConnected, isBoardActive, isPaused, fallActive, togglePause, error };
+  return { readings, latestReading, isConnected, isBoardActive, isPaused, fallActive, toast, clearToast, togglePause, error };
 }

@@ -49,8 +49,9 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(clients)
 	boardHandler := handlers.NewBoardHandler(tcpServer)
 	subscribersHandler := handlers.NewSubscribersHandler(subscriptionRepo)
+	fallEventsHandler := handlers.NewFallEventsHandler(fallEventRepo)
 
-	httpServer := http.New(config.HTTPPort, healthHandler, boardHandler, subscribersHandler)
+	httpServer := http.New(config.HTTPPort, healthHandler, boardHandler, subscribersHandler, fallEventsHandler)
 
 	go tcpServer.Start()
 	go httpServer.Run()

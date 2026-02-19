@@ -137,6 +137,6 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
 			fmt.Sprintf("✅ Acknowledged by @%s", callback.From.UserName)))
 
 		// After resolving, send a message to the alerts topic
-		mqtt.Publish(b.AlertClient, "fall-detection/"+boardID+"/alerts", "RESOLVED")
+		mqtt.Publish(b.AlertClient, "fall-detection/"+boardID+"/alerts", "RESOLVED:"+callback.From.UserName)
 	}
 }

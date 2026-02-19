@@ -14,7 +14,7 @@ type Server struct {
 	port   string
 }
 
-func New(port string, healthHandler handlers.HealthHandler, boardHandler *handlers.BoardHandler, subscribersHandler *handlers.SubscribersHandler) *Server {
+func New(port string, healthHandler handlers.HealthHandler, boardHandler *handlers.BoardHandler, subscribersHandler *handlers.SubscribersHandler, fallEventsHandler *handlers.FallEventsHandler) *Server {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
@@ -26,6 +26,7 @@ func New(port string, healthHandler handlers.HealthHandler, boardHandler *handle
 	routes.RegisterHealthRoutes(r, healthHandler)
 	routes.RegisterBoardRoutes(r, boardHandler)
 	routes.RegisterSubscribersRoutes(r, subscribersHandler)
+	routes.RegisterFallEventsRoutes(r, fallEventsHandler)
 
 	return &Server{
 		engine: r,

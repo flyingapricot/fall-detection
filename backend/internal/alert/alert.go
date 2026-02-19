@@ -11,7 +11,7 @@ import (
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-const fallEventTTL = 3 * time.Minute
+const fallEventTTL = 30 * time.Second
 
 type Alert struct {
 	Client pahomqtt.Client

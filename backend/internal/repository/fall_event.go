@@ -59,6 +59,31 @@ func (r *FallEventRepo) AutoExpireStale(ctx context.Context, ttl time.Duration) 
 	return err
 }
 
+func (r *FallEventRepo) GetByBoard(ctx context.Context, boardID string, limit int) ([]FallEvent, error) {
+	query := `
+		SELECT id, board_id, detected_at, resolved_at, status
+		FROM fall_events
+		WHERE board_id = $1
+		ORDER BY detected_at DESC
+		LIMIT $2
+	`
+	rows, err := r.db.Pool.Query(ctx, query, boardID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []FallEvent
+	for rows.Next() {
+		var e FallEvent
+		if err := rows.Scan(&e.ID, &e.BoardID, &e.DetectedAt, &e.ResolvedAt, &e.Status); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
 func (r* FallEventRepo) GetActive(ctx context.Context, boardID string) (*FallEvent, error) {
 	query := `
 		SELECT id, board_id, detected_at, status 
