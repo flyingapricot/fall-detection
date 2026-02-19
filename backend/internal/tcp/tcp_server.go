@@ -71,6 +71,19 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 
 	reader := bufio.NewReader(conn)
 	registered := false
+	var boardID string;
+
+	defer func() {
+		if boardID != "" {
+			s.BoardsMu.Lock()
+			b := s.Boards[boardID]
+			if b != nil && b.DataSocket == conn {
+				b.DataSocket = nil
+			}
+			s.BoardsMu.Unlock()
+		}
+	}()
+
 
 	for {
 		// Timeout if no data received within 5 seconds
@@ -102,7 +115,7 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 			continue
 		}
 
-		boardID := fields[7]
+		boardID = fields[7]
 
 		if !registered {
 			// Board has been connected for the first time
@@ -175,17 +188,6 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 
 		s.FallState[boardID] = currentFall
 		s.FallStateMu.Unlock()
-
-		// Unregister connection when exiting
-		defer func() {
-			s.BoardsMu.Lock()
-			b := s.Boards[boardID]
-			if b != nil && b.DataSocket == conn {
-				b.DataSocket = nil
-			}
-			s.BoardsMu.Unlock()
-		}()
-
 	}
 }
 
