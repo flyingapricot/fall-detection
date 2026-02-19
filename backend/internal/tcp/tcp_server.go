@@ -192,10 +192,27 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 }
 
 func (s *TCPServer) GetBoards() []*Board {
+	var staleIDs []string
+
+	// Collect stale board IDs
 	s.BoardsMu.RLock()
+	for id, board := range s.Boards {
+		if time.Now().Sub(board.LastSeen) > staleAfter {
+			staleIDs = append(staleIDs, id)
+		}
+	}
+	s.BoardsMu.RUnlock()
+
+	if len(staleIDs) > 0 {
+		s.BoardsMu.Lock()
+		for _, id := range staleIDs {
+			delete(s.Boards, id)
+		}
+		s.BoardsMu.Unlock()
+	}
 
 	var result []*Board
-
+	s.BoardsMu.RLock()
 	for _, board := range s.Boards {
 		result = append(result, board)
 	}
