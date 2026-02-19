@@ -14,21 +14,20 @@ import (
 const fallEventTTL = 30 * time.Second
 
 type Alert struct {
-	Client pahomqtt.Client
-	Bot *Bot
+	Client           pahomqtt.Client
+	Bot              *Bot
 	SubscriptionRepo *repository.SubscriptionRepo
-	FallEventRepo *repository.FallEventRepo
+	FallEventRepo    *repository.FallEventRepo
 }
 
-
 func (a *Alert) Start() {
-    log.Printf("[Alert] Client connected: %v", a.Client.IsConnected())
-    if !a.Client.IsConnected() {
-        log.Println("[Alert] ERROR: MQTT client not connected!")
-        return
-    }
-    log.Println("[Alert] Subscribing to fall-detection/+/alerts...")
-    token := a.Client.Subscribe("fall-detection/+/alerts", 1, func(client pahomqtt.Client, msg pahomqtt.Message) {
+	log.Printf("[Alert] Client connected: %v", a.Client.IsConnected())
+	if !a.Client.IsConnected() {
+		log.Println("[Alert] ERROR: MQTT client not connected!")
+		return
+	}
+	log.Println("[Alert] Subscribing to fall-detection/+/alerts...")
+	token := a.Client.Subscribe("fall-detection/+/alerts", 1, func(client pahomqtt.Client, msg pahomqtt.Message) {
 		topic := msg.Topic()
 		parts := strings.Split(topic, "/")
 		boardID := parts[1]
@@ -40,10 +39,9 @@ func (a *Alert) Start() {
 			log.Printf("Failed to auto-expire stale fall events: %v", err)
 		}
 
-		// 2. Check for existing active fall (won't be stale anymore)
-		existing, err := a.FallEventRepo.GetActive(context.Background(), boardID)
-		if err == nil && existing != nil {
-			// Recent active fall already exists, skip
+		// 2. Check for any recent fall event within TTL (active or already resolved/expired).
+		recent, err := a.FallEventRepo.GetRecent(context.Background(), boardID, fallEventTTL)
+		if err == nil && recent != nil {
 			return
 		}
 
@@ -66,24 +64,24 @@ func (a *Alert) Start() {
 		for _, chatID := range chatIDs {
 			a.Bot.SendFallAlert(chatID, boardID, eventID)
 		}
-    })
-    token.Wait()
-    if token.Error() != nil {
-        log.Printf("[Alert] Subscribe FAILED: %v", token.Error())
-    } else {
-        log.Println("[Alert] Subscribe SUCCESS")
-    }
+	})
+	token.Wait()
+	if token.Error() != nil {
+		log.Printf("[Alert] Subscribe FAILED: %v", token.Error())
+	} else {
+		log.Println("[Alert] Subscribe SUCCESS")
+	}
 }
 
-func NewAlert(client pahomqtt.Client, subscriptionRepo *repository.SubscriptionRepo, fallEventRepo *repository.FallEventRepo, botToken string, tcpServer *tcp.TCPServer) (*Alert,error) {
-	bot, err := NewBot(subscriptionRepo, botToken, tcpServer,client)
+func NewAlert(client pahomqtt.Client, subscriptionRepo *repository.SubscriptionRepo, fallEventRepo *repository.FallEventRepo, botToken string, tcpServer *tcp.TCPServer) (*Alert, error) {
+	bot, err := NewBot(subscriptionRepo, botToken, tcpServer, client)
 	if err != nil {
 		return nil, err
 	}
 	return &Alert{
-		Client: client,	
-		Bot: bot,
+		Client:           client,
+		Bot:              bot,
 		SubscriptionRepo: subscriptionRepo,
-		FallEventRepo: fallEventRepo,
+		FallEventRepo:    fallEventRepo,
 	}, nil
 }
