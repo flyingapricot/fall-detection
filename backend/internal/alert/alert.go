@@ -6,9 +6,12 @@ import (
 	"fall-detection/internal/tcp"
 	"log"
 	"strings"
+	"time"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 )
+
+const fallEventTTL = 3 * time.Minute
 
 type Alert struct {
 	Client pahomqtt.Client
@@ -32,10 +35,15 @@ func (a *Alert) Start() {
 
 		log.Printf("[Alert] Received: %s", msg.Topic())
 
-		// 1. Check for existing active fall
+		// 1. Auto-expire any stale active falls older than TTL
+		if err := a.FallEventRepo.AutoExpireStale(context.Background(), fallEventTTL); err != nil {
+			log.Printf("Failed to auto-expire stale fall events: %v", err)
+		}
+
+		// 2. Check for existing active fall (won't be stale anymore)
 		existing, err := a.FallEventRepo.GetActive(context.Background(), boardID)
 		if err == nil && existing != nil {
-			// Already an active fall, skip
+			// Recent active fall already exists, skip
 			return
 		}
 

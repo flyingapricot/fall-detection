@@ -112,17 +112,17 @@ func (b *Bot) SendFallAlert(chatID int64, boardID string, eventID int64) {
 	msg := tgbotapi.NewMessage(chatID, "🚨 FALL DETECTED - Board "+boardID)
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Mark Resolved", fmt.Sprintf("resolve:%d:%s", eventID, boardID)),
+			tgbotapi.NewInlineKeyboardButtonData("✅ Acknowledge?", fmt.Sprintf("acknowledge:%d:%s", eventID, boardID)),
 		),
 	)
 	b.api.Send(msg)
 }
 
 func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.FallEventRepo) {
-	data := callback.Data // "resolve:123:board1"
+	data := callback.Data // "acknowledge:123:board1"
 	parts := strings.Split(data, ":")
 
-	if len(parts) == 3 && parts[0] == "resolve" {
+	if len(parts) == 3 && parts[0] == "acknowledge" {
 		eventID, _ := strconv.ParseInt(parts[1], 10, 64)
 		boardID := parts[2]
 
@@ -130,11 +130,11 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
 		repo.Resolve(context.Background(), eventID, callback.From.ID)
 
 		// Answer the callback (removes loading state)
-		b.api.Request(tgbotapi.NewCallback(callback.ID, "Resolved!"))
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Acknowledged!"))
 
 		// Update the message
 		b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
-			fmt.Sprintf("✅ Resolved by @%s", callback.From.UserName)))
+			fmt.Sprintf("✅ Acknowledged by @%s", callback.From.UserName)))
 
 		// After resolving, send a message to the alerts topic
 		mqtt.Publish(b.AlertClient, "fall-detection/"+boardID+"/alerts", "RESOLVED")

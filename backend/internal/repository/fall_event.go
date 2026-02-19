@@ -49,6 +49,16 @@ func (r* FallEventRepo) Resolve(ctx context.Context, id int64, resolvedBy int64)
 	return nil
 }
 
+func (r *FallEventRepo) AutoExpireStale(ctx context.Context, ttl time.Duration) error {
+	query := `
+		UPDATE fall_events
+		SET status = 'expired', resolved_at = $1
+		WHERE status = 'active' AND detected_at < $2
+	`
+	_, err := r.db.Pool.Exec(ctx, query, time.Now(), time.Now().Add(-ttl))
+	return err
+}
+
 func (r* FallEventRepo) GetActive(ctx context.Context, boardID string) (*FallEvent, error) {
 	query := `
 		SELECT id, board_id, detected_at, status 
