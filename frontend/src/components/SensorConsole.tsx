@@ -17,9 +17,11 @@ function formatLine(r: SensorReading) {
 export default function SensorConsole({
   readings,
   isPaused,
+  fallActive,
 }: {
   readings: SensorReading[];
   isPaused: boolean;
+  fallActive: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -45,8 +47,9 @@ export default function SensorConsole({
         )}
         {visible.map((r, i) => {
           const { text, isFall } = formatLine(r);
+          const highlight = isFall && fallActive;
           return (
-            <div key={i} className={isFall ? "text-red-400 font-bold" : "text-gray-400"}>
+            <div key={i} className={highlight ? "text-red-400 font-bold" : "text-gray-400"}>
               {text}
             </div>
           );
