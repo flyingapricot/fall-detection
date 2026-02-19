@@ -38,15 +38,18 @@ func (r* FallEventRepo) Create(ctx context.Context, boardID string) (int64, erro
 	return id, nil
 }
 
-func (r* FallEventRepo) Resolve(ctx context.Context, id int64, resolvedBy int64) error {
+// Resolve marks a fall event as resolved. Returns (true, nil) if the event was
+// active and successfully resolved, or (false, nil) if it was already expired/resolved.
+func (r *FallEventRepo) Resolve(ctx context.Context, id int64, resolvedBy int64) (bool, error) {
 	query := `
-		UPDATE fall_events SET resolved_at = $1, resolved_by = $2, status = 'resolved' WHERE id = $3
+		UPDATE fall_events SET resolved_at = $1, resolved_by = $2, status = 'resolved'
+		WHERE id = $3 AND status = 'active'
 	`
-	_, err := r.db.Pool.Exec(ctx, query, time.Now(), resolvedBy, id)
+	result, err := r.db.Pool.Exec(ctx, query, time.Now(), resolvedBy, id)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return result.RowsAffected() > 0, nil
 }
 
 func (r *FallEventRepo) AutoExpireStale(ctx context.Context, ttl time.Duration) error {

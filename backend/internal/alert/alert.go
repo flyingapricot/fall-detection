@@ -26,6 +26,18 @@ func (a *Alert) Start() {
 		log.Println("[Alert] ERROR: MQTT client not connected!")
 		return
 	}
+
+	// Background goroutine: actively expire stale fall events after TTL.
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := a.FallEventRepo.AutoExpireStale(context.Background(), fallEventTTL); err != nil {
+				log.Printf("Failed to auto-expire stale fall events: %v", err)
+			}
+		}
+	}()
+
 	log.Println("[Alert] Subscribing to fall-detection/+/alerts...")
 	token := a.Client.Subscribe("fall-detection/+/alerts", 1, func(client pahomqtt.Client, msg pahomqtt.Message) {
 		topic := msg.Topic()
