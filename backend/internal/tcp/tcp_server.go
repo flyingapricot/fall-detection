@@ -139,6 +139,7 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 				}
 
 				oldConn = existingBoard.DataSocket
+				existingBoard.DataSocket = conn
 
 			} else {
 				s.Boards[boardID] = &Board{
