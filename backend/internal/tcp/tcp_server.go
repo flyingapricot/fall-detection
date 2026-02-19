@@ -268,7 +268,7 @@ func (s *TCPServer) WriteToBoard(rawBoardID string, message string) error {
 }
 
 func (s *TCPServer) StartUDPListener() {
-	addr := fmt.Sprintf(":%d", s.Addr)
+	addr := fmt.Sprintf("%s", s.Addr)
 	conn, err := net.ListenPacket("udp", addr)
 	if err != nil {
 		log.Fatalf("UDP listen error: %v", err)
