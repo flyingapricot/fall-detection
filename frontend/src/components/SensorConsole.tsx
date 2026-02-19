@@ -48,9 +48,10 @@ export default function SensorConsole({
         {visible.map((r, i) => {
           const { text, isFall } = formatLine(r);
           const highlight = isFall && fallActive;
+          const displayText = highlight ? text : text.replace("  !! FALL DETECTED", "");
           return (
             <div key={i} className={highlight ? "text-red-400 font-bold" : "text-gray-400"}>
-              {text}
+              {displayText}
             </div>
           );
         })}

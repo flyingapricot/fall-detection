@@ -126,17 +126,24 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
 		eventID, _ := strconv.ParseInt(parts[1], 10, 64)
 		boardID := parts[2]
 
-		// Resolve the event
-		repo.Resolve(context.Background(), eventID, callback.From.ID)
+		resolved, err := repo.Resolve(context.Background(), eventID, callback.From.ID)
+		if err != nil {
+			b.api.Request(tgbotapi.NewCallback(callback.ID, "Error resolving event"))
+			return
+		}
 
-		// Answer the callback (removes loading state)
+		if !resolved {
+			// Event was already expired or resolved by someone else
+			b.api.Request(tgbotapi.NewCallback(callback.ID, "This alert has already expired"))
+			b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
+				"⏱ This fall alert had already timed out before it was acknowledged."))
+			return
+		}
+
+		// Successfully resolved
 		b.api.Request(tgbotapi.NewCallback(callback.ID, "Acknowledged!"))
-
-		// Update the message
 		b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
 			fmt.Sprintf("✅ Acknowledged by @%s", callback.From.UserName)))
-
-		// After resolving, send a message to the alerts topic
 		mqtt.Publish(b.AlertClient, "fall-detection/"+boardID+"/alerts", "RESOLVED:"+callback.From.UserName)
 	}
 }
