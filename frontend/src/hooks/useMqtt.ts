@@ -7,6 +7,7 @@ const USERNAME = import.meta.env.VITE_MQTT_USERNAME as string;
 const PASSWORD = import.meta.env.VITE_MQTT_PASSWORD as string;
 const MAX_READINGS = 200;
 const STALE_TIMEOUT = 5000;
+const FALL_AUTO_DISMISS = 3 * 60 * 1000; // 3 minutes, matches backend TTL
 
 export function useMqtt(boardId: string) {
   const [readings, setReadings] = useState<SensorReading[]>([]);
@@ -18,6 +19,7 @@ export function useMqtt(boardId: string) {
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<mqtt.MqttClient | null>(null);
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferRef = useRef<SensorReading[]>([]);
 
   const resetStaleTimer = useCallback(() => {
@@ -82,9 +84,13 @@ export function useMqtt(boardId: string) {
 
       if (topic === alertsTopic) {
         if (msg.trim() === "RESOLVED") {
+          if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
           setFallActive(false);
         } else {
+          // New fall — set active and start auto-dismiss timer
+          if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
           setFallActive(true);
+          fallTimerRef.current = setTimeout(() => setFallActive(false), FALL_AUTO_DISMISS);
         }
         return;
       }
@@ -100,6 +106,7 @@ export function useMqtt(boardId: string) {
 
     return () => {
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
+      if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
       client.unsubscribe([sensorsTopic, alertsTopic]);
       client.end();
       clientRef.current = null;
