@@ -82,22 +82,27 @@ export function useMqtt(boardId: string) {
     client.on("message", (topic, payload) => {
       const msg = payload.toString();
 
+      // Alerts topic: only used for RESOLVED signal
       if (topic === alertsTopic) {
         if (msg.trim() === "RESOLVED") {
           if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
           setFallActive(false);
-        } else {
-          // New fall — set active and start auto-dismiss timer
-          if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
-          setFallActive(true);
-          fallTimerRef.current = setTimeout(() => setFallActive(false), FALL_AUTO_DISMISS);
         }
         return;
       }
 
-      // Sensors topic
+      // Sensors topic: parse data and drive fall state directly
       const reading = parseSensorCSV(msg);
-      if (reading) addReading(reading);
+      if (!reading) return;
+
+      addReading(reading);
+
+      if (reading.fallStatus) {
+        // Fall detected — show banner and (re)start auto-dismiss timer
+        if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
+        setFallActive(true);
+        fallTimerRef.current = setTimeout(() => setFallActive(false), FALL_AUTO_DISMISS);
+      }
     });
 
     client.on("error", (err) => setError(err.message));
