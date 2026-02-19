@@ -86,14 +86,35 @@ func (r *FallEventRepo) GetByBoard(ctx context.Context, boardID string, limit in
 
 func (r* FallEventRepo) GetActive(ctx context.Context, boardID string) (*FallEvent, error) {
 	query := `
-		SELECT id, board_id, detected_at, status 
-		FROM fall_events 
+		SELECT id, board_id, detected_at, status
+		FROM fall_events
 		WHERE board_id = $1 AND status = 'active'
 		LIMIT 1
 	`
 
 	var event FallEvent
 	err := r.db.Pool.QueryRow(ctx, query, boardID).Scan(&event.ID, &event.BoardID, &event.DetectedAt, &event.Status)
+	if err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
+// GetRecent returns the most recent fall event for a board regardless of status,
+// as long as it was detected within the given window. Used to prevent re-firing
+// after an early ACK while the board is still in fall state.
+func (r *FallEventRepo) GetRecent(ctx context.Context, boardID string, window time.Duration) (*FallEvent, error) {
+	query := `
+		SELECT id, board_id, detected_at, status
+		FROM fall_events
+		WHERE board_id = $1 AND detected_at >= $2
+		ORDER BY detected_at DESC
+		LIMIT 1
+	`
+	var event FallEvent
+	err := r.db.Pool.QueryRow(ctx, query, boardID, time.Now().Add(-window)).Scan(
+		&event.ID, &event.BoardID, &event.DetectedAt, &event.Status,
+	)
 	if err != nil {
 		return nil, err
 	}
