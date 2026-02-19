@@ -7,24 +7,33 @@ const POLL_INTERVAL = 5000;
 export function useBoards() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+    let isFirst = true;
 
     async function fetchBoards() {
+      if (!isFirst) setRefreshing(true);
       try {
         const res = await fetch(`${API_URL}/boards/connected`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: Board[] | null = await res.json();
         if (active) {
           setBoards(data ?? []);
+          setLastUpdated(new Date());
           setError(null);
         }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : "Failed to fetch boards");
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setRefreshing(false);
+          isFirst = false;
+        }
       }
     }
 
@@ -37,5 +46,5 @@ export function useBoards() {
     };
   }, []);
 
-  return { boards, loading, error };
+  return { boards, loading, refreshing, lastUpdated, error };
 }
