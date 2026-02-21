@@ -133,10 +133,17 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
 		}
 
 		if !resolved {
-			// Event was already expired or resolved by someone else
-			b.api.Request(tgbotapi.NewCallback(callback.ID, "This alert has already expired"))
-			b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
-				"⏱ This fall alert had already timed out before it was acknowledged."))
+			// Check actual status to give the right feedback
+			event, err := repo.GetByID(context.Background(), eventID)
+			if err == nil && event.Status == "resolved" {
+				b.api.Request(tgbotapi.NewCallback(callback.ID, "Already acknowledged"))
+				b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
+					"✅ This fall was already acknowledged by another responder."))
+			} else {
+				b.api.Request(tgbotapi.NewCallback(callback.ID, "Alert already expired"))
+				b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
+					"⏱ This fall alert had already timed out before it was acknowledged."))
+			}
 			return
 		}
 
