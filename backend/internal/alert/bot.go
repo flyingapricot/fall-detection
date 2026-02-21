@@ -140,10 +140,19 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
 			return
 		}
 
-		// Successfully resolved
+		// Successfully resolved — notify all subscribers
 		b.api.Request(tgbotapi.NewCallback(callback.ID, "Acknowledged!"))
-		b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
-			fmt.Sprintf("✅ Acknowledged by @%s", callback.From.UserName)))
 		mqtt.Publish(b.AlertClient, "fall-detection/"+boardID+"/alerts", "RESOLVED:"+callback.From.UserName)
+
+		ackMsg := fmt.Sprintf("✅ Fall on %s acknowledged by @%s", boardID, callback.From.UserName)
+		chatIDs, _, _, err := b.SubscriptionRepo.GetSubscribers(context.Background(), boardID)
+		if err != nil || len(chatIDs) == 0 {
+			// Fallback: at least notify the person who tapped
+			b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID, ackMsg))
+		} else {
+			for _, chatID := range chatIDs {
+				b.api.Send(tgbotapi.NewMessage(chatID, ackMsg))
+			}
+		}
 	}
 }
