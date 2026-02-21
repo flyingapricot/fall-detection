@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -78,6 +79,21 @@ func (b *Bot) ListenForCommands(subscriptionRepo *repository.SubscriptionRepo, f
 		boardID := strings.TrimSpace(args)
 
 		switch command {
+		case "start", "help":
+			b.api.Send(tgbotapi.NewMessage(chatID, `👋 Welcome to the Fall Detection Monitor!
+
+I'll send you real-time alerts whenever a fall is detected on your boards, and let you acknowledge them directly from Telegram.
+
+To get started:
+  /subscribe board1 — receive alerts for board 1
+
+Available commands:
+  /subscribe board#    – Subscribe to a board
+  /unsubscribe board#  – Unsubscribe from a board
+  /myboards            – List your active subscriptions
+  /statuses            – Show online/offline status of your boards
+  /history board#      – Last 5 fall events for a board
+  /help                – Show this message again`))
 		case "subscribe":
 			if !boardIDPattern.MatchString(boardID) {
 				b.api.Send(tgbotapi.NewMessage(chatID, "Invalid format. Usage: /subscribe board#number\nExample: /subscribe board1"))
@@ -101,6 +117,94 @@ func (b *Bot) ListenForCommands(subscriptionRepo *repository.SubscriptionRepo, f
 			} else {
 				b.api.Send(tgbotapi.NewMessage(chatID, "Unsubscribed from "+boardID))
 			}
+
+		case "myboards":
+			// Lists the active subscriptions of the user
+			boardsSubscribedTo, err := b.SubscriptionRepo.GetBoardsSubscribedTo(context.Background(), chatID)
+			if err != nil {
+				b.api.Send(tgbotapi.NewMessage(chatID, "Failed to retrieve list of subscriptions: "+err.Error()))
+			}
+
+			if len(boardsSubscribedTo) == 0 {
+				b.api.Send(tgbotapi.NewMessage(chatID, "You are not subscribed to any boards.\n Use /subscribe board#number to get started."))
+				continue
+			}
+
+			lines := make([]string, len(boardsSubscribedTo))
+			for i, id := range boardsSubscribedTo {
+				lines[i] = "• " + id
+			}
+			b.api.Send(tgbotapi.NewMessage(chatID, "Your subscriptions:\n\n"+strings.Join(lines, "\n")))
+
+		case "statuses":
+			// Get current status of boards subscribed to
+			boardsOnline := b.TCPServer.GetBoards()
+			boardsSubscribedTo, err := b.SubscriptionRepo.GetBoardsSubscribedTo(context.Background(), chatID)
+			if err != nil {
+				b.api.Send(tgbotapi.NewMessage(chatID, "Failed to retrieve list of subscriptions: "+err.Error()))
+			}
+
+			if len(boardsSubscribedTo) == 0 {
+				b.api.Send(tgbotapi.NewMessage(chatID, "You are not subscribed to any boards.\n Use /subscribe board#number to get started."))
+				continue
+			}
+
+			// Build a quick lookup set of online board IDs
+			onlineSet := make(map[string]bool)
+			for _, board := range boardsOnline {
+				onlineSet["board"+board.ID] = true
+			}
+
+			lines := make([]string, len(boardsSubscribedTo))
+			for i, boardID := range boardsSubscribedTo {
+				if onlineSet[boardID] {
+					lines[i] = "• " + boardID + " — 🟢 Online"
+				} else {
+					lines[i] = "• " + boardID + " — 🔴 Offline"
+				}
+			}
+
+			b.api.Send(tgbotapi.NewMessage(chatID, "Your subscriptions:\n\n"+strings.Join(lines, "\n")))
+
+		case "history":
+			if !boardIDPattern.MatchString(boardID) {
+				b.api.Send(tgbotapi.NewMessage(chatID, "Invalid format. Usage: /history board#\nExample: /history board1"))
+				continue
+			}
+			events, err := fallEventRepo.GetLastFiveEvents(context.Background(), boardID)
+			if err != nil {
+				b.api.Send(tgbotapi.NewMessage(chatID, "Failed to retrieve history: "+err.Error()))
+				continue
+			}
+			if len(events) == 0 {
+				b.api.Send(tgbotapi.NewMessage(chatID, "No fall events recorded for "+boardID+"."))
+				continue
+			}
+			lines := make([]string, len(events))
+			for i, e := range events {
+				var status string
+				switch e.Status {
+				case "resolved":
+					if e.ResolvedAt != nil {
+						elapsed := e.ResolvedAt.Sub(e.DetectedAt).Round(time.Second)
+						status = fmt.Sprintf("✅ Acknowledged in %s", elapsed)
+					} else {
+						status = "✅ Acknowledged"
+					}
+				case "expired":
+					status = "⏱ Timed out"
+				default:
+					status = "🔴 Active"
+				}
+				lines[i] = fmt.Sprintf("%d. %s\n   %s",
+					len(events)-i,
+					e.DetectedAt.Format("02 Jan 15:04:05"),
+					status,
+				)
+			}
+			msg := fmt.Sprintf("Last %d fall events for %s:\n\n%s", len(events), boardID, strings.Join(lines, "\n\n"))
+			b.api.Send(tgbotapi.NewMessage(chatID, msg))
+
 		default:
 			b.api.Send(tgbotapi.NewMessage(chatID, "Unknown command. Available commands:\n/subscribe board#number\n/unsubscribe board#number"))
 		}

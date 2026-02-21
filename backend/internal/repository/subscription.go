@@ -31,32 +31,57 @@ func (r *SubscriptionRepo) Unsubscribe(ctx context.Context, chatID int64, boardI
 	_, err := r.db.Pool.Exec(ctx, query, chatID, boardID)
 	return err
 }
+
+func (r *SubscriptionRepo) GetBoardsSubscribedTo(ctx context.Context, chatID int64) ([]string, error) {
+	query := `
+		SELECT board_id FROM subscriptions WHERE chat_id = $1
+	`
+
+	rows, err := r.db.Pool.Query(ctx, query, chatID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+	var boards []string
+
+	for rows.Next() {
+		var boardID string
+		if err := rows.Scan(&boardID); err != nil {
+			return nil, err
+		}
+		boards = append(boards, boardID)
+	}
+
+	return boards, nil
+}
+
 func (r *SubscriptionRepo) GetSubscribers(ctx context.Context, boardID string) ([]int64, []string, []string, error) {
 	query := `
 		SELECT chat_id, first_name, username FROM subscriptions WHERE board_id = $1
 	`
 
 	rows, err := r.db.Pool.Query(ctx, query, boardID)
-    if err != nil {
-        return nil, nil, nil, err
-    }
-    defer rows.Close()
-    
-    var chatIDs []int64
-    var firstNames []string
-    var usernames []string
-    for rows.Next() {
-        var chatID int64
-        var firstName string
-        var username string
-        if err := rows.Scan(&chatID, &firstName, &username); err != nil {
-            return nil, nil, nil, err
-        }
-        chatIDs = append(chatIDs, chatID)
-		firstNames = append(firstNames, firstName)   
-		usernames = append(usernames, username)      
-    }
-    
-    return chatIDs, firstNames, usernames, rows.Err()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close()
+
+	var chatIDs []int64
+	var firstNames []string
+	var usernames []string
+	for rows.Next() {
+		var chatID int64
+		var firstName string
+		var username string
+		if err := rows.Scan(&chatID, &firstName, &username); err != nil {
+			return nil, nil, nil, err
+		}
+		chatIDs = append(chatIDs, chatID)
+		firstNames = append(firstNames, firstName)
+		usernames = append(usernames, username)
+	}
+
+	return chatIDs, firstNames, usernames, rows.Err()
 
 }
