@@ -6,7 +6,25 @@ import FallAlertBanner from "../components/FallAlertBanner";
 import SubscriberList from "../components/SubscriberList";
 import FallEventHistory from "../components/FallEventHistory";
 import Toast from "../components/Toast";
-import type { SensorReading } from "../types/sensor";
+import type { SensorReading, FallState } from "../types/sensor";
+import { FALL_STATE_LABELS } from "../types/sensor";
+
+const FALL_STATE_STYLES: Record<FallState, string | null> = {
+  0: null,
+  1: "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20",
+  2: "bg-orange-500/10 text-orange-400 ring-1 ring-orange-500/20",
+  3: "bg-red-500/10 text-red-400 ring-1 ring-red-500/20",
+};
+
+function FallStateBadge({ state }: { state: FallState }) {
+  const style = FALL_STATE_STYLES[state];
+  if (!style) return null;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${style}`}>
+      {FALL_STATE_LABELS[state]}
+    </span>
+  );
+}
 
 function exportCSV(readings: SensorReading[], boardId: string) {
   const header = "timestamp,accelX,accelY,accelZ,gyroX,gyroY,gyroZ,fallStatus,boardNumber";
@@ -32,8 +50,10 @@ function exportCSV(readings: SensorReading[], boardId: string) {
 export default function BoardDetail() {
   const { id } = useParams<{ id: string }>();
   const {
-    readings, isConnected, isBoardActive, isPaused, fallActive, toast, clearToast, togglePause, error,
+    readings, latestReading, isConnected, isBoardActive, isPaused, fallActive, toast, clearToast, togglePause, error,
   } = useMqtt(id!);
+
+  const fallState = latestReading?.fallState ?? 0;
 
   const statusColor = !isConnected
     ? "bg-gray-600"
@@ -68,6 +88,7 @@ export default function BoardDetail() {
             <span className={`inline-block h-2 w-2 rounded-full ${statusColor}`} />
             <span className={statusTextColor}>{statusText}</span>
           </div>
+          <FallStateBadge state={fallState as FallState} />
           <div className="flex gap-1.5">
             <button
               onClick={togglePause}

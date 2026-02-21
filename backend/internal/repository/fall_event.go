@@ -7,14 +7,13 @@ import (
 )
 
 type FallEvent struct {
-    ID         int64
-    BoardID    string
-    DetectedAt time.Time
-    ResolvedAt *time.Time  
-    ResolvedBy *int64
-    Status     string
+	ID         int64
+	BoardID    string
+	DetectedAt time.Time
+	ResolvedAt *time.Time
+	ResolvedBy *int64
+	Status     string
 }
-
 
 type FallEventRepo struct {
 	db *database.DB
@@ -24,7 +23,7 @@ func NewFallEventRepo(db *database.DB) *FallEventRepo {
 	return &FallEventRepo{db: db}
 }
 
-func (r* FallEventRepo) Create(ctx context.Context, boardID string) (int64, error) {
+func (r *FallEventRepo) Create(ctx context.Context, boardID string) (int64, error) {
 	query := `
 		INSERT INTO fall_events (board_id, detected_at)
 		VALUES ($1, $2)
@@ -101,7 +100,7 @@ func (r *FallEventRepo) GetByID(ctx context.Context, id int64) (*FallEvent, erro
 	return &e, nil
 }
 
-func (r* FallEventRepo) GetActive(ctx context.Context, boardID string) (*FallEvent, error) {
+func (r *FallEventRepo) GetActive(ctx context.Context, boardID string) (*FallEvent, error) {
 	query := `
 		SELECT id, board_id, detected_at, status
 		FROM fall_events
@@ -115,6 +114,34 @@ func (r* FallEventRepo) GetActive(ctx context.Context, boardID string) (*FallEve
 		return nil, err
 	}
 	return &event, nil
+}
+
+func (r *FallEventRepo) GetLastFiveEvents(ctx context.Context, boardID string) ([]FallEvent, error) {
+	query := `
+		SELECT detected_at, resolved_at, resolved_by, status	
+		FROM fall_events
+		WHERE board_id = $1
+		ORDER BY detected_at DESC
+		LIMIT 5
+	`
+
+	rows, err := r.db.Pool.Query(ctx, query, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []FallEvent
+	for rows.Next() {
+		var e FallEvent
+		if err := rows.Scan(&e.DetectedAt, &e.ResolvedAt, &e.ResolvedBy, &e.Status); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+
+	return events, rows.Err()
+
 }
 
 // GetRecent returns the most recent fall event for a board regardless of status,
