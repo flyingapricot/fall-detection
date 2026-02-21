@@ -6,6 +6,7 @@ import type { SensorReading } from "../types/sensor";
 type ChartType = "accel" | "gyro";
 
 const COLORS = { x: "#6366f1", y: "#10b981", z: "#f59e0b" }; // indigo, emerald, amber
+const WINDOW_SECS = 30; // sliding x-axis window
 
 const TITLES: Record<ChartType, string> = {
   accel: "Accelerometer",
@@ -95,12 +96,18 @@ export default function SensorChart({
   // Update data when readings or visibility changes
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart) return;
+    if (!chart || readings.length === 0) return;
 
-    const ts = readings.map((r) => r.timestamp / 1000);
-    const xData = readings.map((r) => (visible.x ? (r[fields[0]] as number) : null));
-    const yData = readings.map((r) => (visible.y ? (r[fields[1]] as number) : null));
-    const zData = readings.map((r) => (visible.z ? (r[fields[2]] as number) : null));
+    const nowSecs = readings[readings.length - 1].timestamp / 1000;
+    const windowStart = nowSecs - WINDOW_SECS;
+
+    // Only render readings within the sliding window
+    const windowed = readings.filter((r) => r.timestamp / 1000 >= windowStart);
+
+    const ts = windowed.map((r) => r.timestamp / 1000);
+    const xData = windowed.map((r) => (visible.x ? (r[fields[0]] as number) : null));
+    const yData = windowed.map((r) => (visible.y ? (r[fields[1]] as number) : null));
+    const zData = windowed.map((r) => (visible.z ? (r[fields[2]] as number) : null));
 
     chart.setData([
       ts,
@@ -108,6 +115,9 @@ export default function SensorChart({
       yData as (number | null)[],
       zData as (number | null)[],
     ]);
+
+    // Lock the x-axis to a fixed window so the chart scrolls rather than compresses
+    chart.setScale("x", { min: windowStart, max: nowSecs });
   }, [readings, visible, fields]);
 
   const toggle = (axis: "x" | "y" | "z") =>
