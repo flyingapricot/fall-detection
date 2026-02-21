@@ -2,8 +2,9 @@ import { Link } from "react-router-dom";
 import type { Board } from "../types/board";
 
 function duration(isoString: string): string {
-  const seconds = Math.floor(
-    (Date.now() - new Date(isoString).getTime()) / 1000,
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(isoString).getTime()) / 1000),
   );
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
