@@ -87,6 +87,20 @@ func (r *FallEventRepo) GetByBoard(ctx context.Context, boardID string, limit in
 	return events, rows.Err()
 }
 
+func (r *FallEventRepo) GetByID(ctx context.Context, id int64) (*FallEvent, error) {
+	query := `
+		SELECT id, board_id, detected_at, resolved_at, status
+		FROM fall_events
+		WHERE id = $1
+	`
+	var e FallEvent
+	err := r.db.Pool.QueryRow(ctx, query, id).Scan(&e.ID, &e.BoardID, &e.DetectedAt, &e.ResolvedAt, &e.Status)
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
+}
+
 func (r* FallEventRepo) GetActive(ctx context.Context, boardID string) (*FallEvent, error) {
 	query := `
 		SELECT id, board_id, detected_at, status

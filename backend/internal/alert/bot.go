@@ -133,17 +133,33 @@ func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.
 		}
 
 		if !resolved {
-			// Event was already expired or resolved by someone else
-			b.api.Request(tgbotapi.NewCallback(callback.ID, "This alert has already expired"))
-			b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
-				"⏱ This fall alert had already timed out before it was acknowledged."))
+			// Check actual status to give the right feedback
+			event, err := repo.GetByID(context.Background(), eventID)
+			if err == nil && event.Status == "resolved" {
+				b.api.Request(tgbotapi.NewCallback(callback.ID, "Already acknowledged"))
+				b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
+					"✅ This fall was already acknowledged by another responder."))
+			} else {
+				b.api.Request(tgbotapi.NewCallback(callback.ID, "Alert already expired"))
+				b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
+					"⏱ This fall alert had already timed out before it was acknowledged."))
+			}
 			return
 		}
 
-		// Successfully resolved
+		// Successfully resolved — notify all subscribers
 		b.api.Request(tgbotapi.NewCallback(callback.ID, "Acknowledged!"))
-		b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
-			fmt.Sprintf("✅ Acknowledged by @%s", callback.From.UserName)))
 		mqtt.Publish(b.AlertClient, "fall-detection/"+boardID+"/alerts", "RESOLVED:"+callback.From.UserName)
+
+		ackMsg := fmt.Sprintf("✅ Fall on %s acknowledged by @%s", boardID, callback.From.UserName)
+		chatIDs, _, _, err := b.SubscriptionRepo.GetSubscribers(context.Background(), boardID)
+		if err != nil || len(chatIDs) == 0 {
+			// Fallback: at least notify the person who tapped
+			b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID, ackMsg))
+		} else {
+			for _, chatID := range chatIDs {
+				b.api.Send(tgbotapi.NewMessage(chatID, ackMsg))
+			}
+		}
 	}
 }
