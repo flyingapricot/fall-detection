@@ -24,8 +24,10 @@ int mov_avg_C(int N, int* accel_buff);
 
 UART_HandleTypeDef huart1;
 
-#define WIFI_SSID     "SINGTEL-A939(2.4G)"
-#define WIFI_PASSWORD "E38xEuj7jpGEAQK"
+//#define WIFI_SSID      "SINGTEL-A939(2.4G)"
+//#define WIFI_PASSWORD  "E38xEuj7jpGEAQK"
+#define WIFI_SSID      "Hololive#1"
+#define WIFI_PASSWORD  "MotoakiTanigo"
 #define WIFI_SECURITY WIFI_ECN_WPA2_PSK
 
 #define REMOTE_PORT    50066
@@ -45,6 +47,10 @@ UART_HandleTypeDef huart1;
 #define LYING_THRESHOLD      11.0f
 #define FALL_DETECTION_TIME  2000
 #define LYING_DETECTION_TIME 2000
+
+// Barometer fall detection
+#define PRESSURE_FALL_THRESHOLD  0.08f   // hPa change = ~0.6m drop, tune as needed
+#define PRESSURE_HISTORY_SIZE    5       // samples to track pressure trend
 
 // Timing
 #define SAMPLE_DELAY_MS   50         // 20Hz sampling - catches short impact spikes
@@ -72,6 +78,12 @@ static int fallStatus = 0;
 
 uint8_t remote_ip[4] = {66, 33, 22, 238};
 
+// Barometer globals
+static float pressure_history[PRESSURE_HISTORY_SIZE] = {0};
+static int   pressure_idx = 0;
+static int   pressure_ready = 0;     // flag: history buffer filled
+static float pressure_delta = 0.0f;  // most recent pressure change
+
 
 static void uart_log(const char *msg)
 {
@@ -86,6 +98,30 @@ static void uart_logf(const char *fmt, ...)
     vsnprintf(buffer, sizeof(buffer), fmt, args);
     va_end(args);
     HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+}
+
+// ---- Barometer helper -------------------------------------------------------
+// Returns the change in pressure vs the oldest sample in the ring buffer.
+// A positive delta means pressure is RISING (altitude dropping = falling down).
+static float pressure_update(void)
+{
+    float p = BSP_PSENSOR_ReadPressure();
+
+    float oldest = pressure_history[pressure_idx];
+    pressure_history[pressure_idx] = p;
+    pressure_idx = (pressure_idx + 1) % PRESSURE_HISTORY_SIZE;
+
+    if (!pressure_ready)
+    {
+        static int fill_count = 0;
+        fill_count++;
+        if (fill_count >= PRESSURE_HISTORY_SIZE)
+            pressure_ready = 1;
+        return 0.0f;
+    }
+
+    // positive = pressure went up = altitude went down = consistent with a fall
+    return p - oldest;
 }
 
 // WiFi Functions
@@ -150,36 +186,37 @@ int wifiTCPConnect(uint8_t *remote_ip)
 
 int wifiTCPSend(const char *data)
 {
-	    uint16_t sent_len = 0;
-	    uint16_t len = strlen(data);
+    uint16_t sent_len = 0;
+    uint16_t len = strlen(data);
 
-	    if (WIFI_SendData(WIFI_SOCKET, (uint8_t*)data, len, &sent_len, 5000) != WIFI_STATUS_OK)
-	    {
-	        uart_log("> TCP send failed, reconnecting...\r\n");
+    if (WIFI_SendData(WIFI_SOCKET, (uint8_t*)data, len, &sent_len, 5000) != WIFI_STATUS_OK)
+    {
+        uart_log("> TCP send failed, reconnecting...\r\n");
 
-	        // Close and reopen connection
-	        WIFI_CloseClientConnection(WIFI_SOCKET);
-	        HAL_Delay(500);
+        // Close and reopen connection
+        WIFI_CloseClientConnection(WIFI_SOCKET);
+        HAL_Delay(500);
 
-	        if (WIFI_OpenClientConnection(WIFI_SOCKET, WIFI_TCP_PROTOCOL, "client",
-	                                       remote_ip, REMOTE_PORT, 0) != WIFI_STATUS_OK)
-	        {
-	            uart_log("> ERROR : Reconnection failed\r\n");
-	            TCPConnected = 0;
-	            return -1;
-	        }
+        if (WIFI_OpenClientConnection(WIFI_SOCKET, WIFI_TCP_PROTOCOL, "client",
+                                       remote_ip, REMOTE_PORT, 0) != WIFI_STATUS_OK)
+        {
+            uart_log("> ERROR : Reconnection failed\r\n");
+            TCPConnected = 0;
+            return -1;
+        }
 
-	        uart_log("> Reconnected, retrying send...\r\n");
+        uart_log("> Reconnected, retrying send...\r\n");
 
-	        // Retry once
-	        if (WIFI_SendData(WIFI_SOCKET, (uint8_t*)data, len, &sent_len, 5000) != WIFI_STATUS_OK)
-	        {
-	            uart_log("> ERROR : Retry failed\r\n");
-	            return -1;
-	        }
-	    }
+        // Retry once
+        if (WIFI_SendData(WIFI_SOCKET, (uint8_t*)data, len, &sent_len, 5000) != WIFI_STATUS_OK)
+        {
+            uart_log("> ERROR : Retry failed\r\n");
+            return -1;
+        }
+    }
 
-	    return (int)sent_len;}
+    return (int)sent_len;
+}
 
 int wifiTCPDisconnect(void)
 {
@@ -275,6 +312,10 @@ int main(void)
         gyro_velocity[1] = gyro_data[1] * 9.8f / 1000.0f;
         gyro_velocity[2] = gyro_data[2] * 9.8f / 1000.0f;
 
+        // ---- Read barometer ----
+        float baro_pressure = BSP_PSENSOR_ReadPressure();   // raw hPa reading for WiFi
+        pressure_delta = pressure_update();                  // trend for fall detection
+
         float accel_filt_asm[3] = {0};
         float accel_filt_c[3]   = {0};
 
@@ -316,6 +357,10 @@ int main(void)
             sprintf(buffer, "Averaged X : %f; Averaged Y : %f; Averaged Z : %f;\r\n\n",
                     gyro_velocity[0], gyro_velocity[1], gyro_velocity[2]);
             HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+
+            sprintf(buffer, "Barometer: %.4f hPa, Pressure delta: %.5f hPa\r\n",
+                    baro_pressure, pressure_delta);
+            HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
         }
 
         // ---- Fall detection (runs every loop at 20Hz) ----
@@ -336,6 +381,10 @@ int main(void)
             {
                 sprintf(buffer, "DEBUG: Accel: %.2f m/s², Delta: %.2f, Gyro: %.2f deg/s, State: %d\r\n",
                         accel_magnitude, accel_delta, gyro_magnitude, fall_state);
+                HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+
+                sprintf(buffer, "DEBUG: Pressure: %.4f hPa, Delta: %.5f hPa\r\n",
+                        baro_pressure, pressure_delta);
                 HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
             }
 
@@ -381,29 +430,38 @@ int main(void)
             // ---- State machine ----
             switch(fall_state)
             {
-				case STATE_NORMAL:
-					// ONLY look for freefall - do NOT trigger on impact alone
-					// This prevents false triggers from simply lifting the board
-					if(accel_magnitude < FREEFALL_THRESHOLD)
-					{
-						fall_state = STATE_FREEFALL_DETECTED;
-						freefall_timestamp = current_time;
-						sprintf(buffer, "*** FREEFALL DETECTED! Magnitude: %.2f m/s² ***\r\n", accel_magnitude);
-						HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
-					}
-					break;
+                case STATE_NORMAL:
+                    // ONLY look for freefall - do NOT trigger on impact alone
+                    // This prevents false triggers from simply lifting the board
+                    if(accel_magnitude < FREEFALL_THRESHOLD)
+                    {
+                        fall_state = STATE_FREEFALL_DETECTED;
+                        freefall_timestamp = current_time;
+                        sprintf(buffer, "*** FREEFALL DETECTED! Magnitude: %.2f m/s², Pressure delta: %.4f hPa ***\r\n",
+                                accel_magnitude, pressure_delta);
+                        HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+                    }
+                    break;
 
                 case STATE_FREEFALL_DETECTED:
-                    // Impact = absolute spike OR sudden positive delta
-                    if((accel_magnitude > IMPACT_THRESHOLD || accel_delta > IMPACT_DELTA) && gyro_magnitude < IMPACT_GYRO_MAX)
+                {
+                    // Pressure rising = altitude dropping = consistent with a real fall.
+                    // Used as a soft bonus vote: lowers impact thresholds slightly when confirmed.
+                    int baro_confirms = (pressure_delta > PRESSURE_FALL_THRESHOLD);
+
+                    float effective_impact = baro_confirms ? (IMPACT_THRESHOLD * 0.85f) : IMPACT_THRESHOLD;
+                    float effective_delta  = baro_confirms ? (IMPACT_DELTA  * 0.85f) : IMPACT_DELTA;
+
+                    if((accel_magnitude > effective_impact || accel_delta > effective_delta)
+                       && gyro_magnitude < IMPACT_GYRO_MAX)
                     {
                         if((current_time - freefall_timestamp) < FALL_DETECTION_TIME)
                         {
                             fall_state = STATE_IMPACT_DETECTED;
                             impact_timestamp = current_time;
                             lying_timestamp = 0;
-                            sprintf(buffer, "*** IMPACT AFTER FREEFALL! Accel: %.2f m/s², Delta: %.2f ***\r\n",
-                                    accel_magnitude, accel_delta);
+                            sprintf(buffer, "*** IMPACT AFTER FREEFALL! Accel: %.2f m/s², Delta: %.2f, Baro confirms: %s ***\r\n",
+                                    accel_magnitude, accel_delta, baro_confirms ? "YES" : "NO");
                             HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
                         }
                         else
@@ -420,6 +478,7 @@ int main(void)
                         HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
                     }
                     break;
+                }
 
                 case STATE_IMPACT_DETECTED:
                     // Wait for board to be still (person lying on ground)
@@ -471,7 +530,6 @@ int main(void)
 
                 case STATE_FALL_CONFIRMED:
                 {
-
                     // Fallback timeout (30 seconds)
                     if((current_time - impact_timestamp) > 30000) {
                         fall_state = STATE_NORMAL;
@@ -506,10 +564,10 @@ int main(void)
             {
                 last_wifi_send_time = current_time;
                 char msg[256];
-                sprintf(msg, "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                sprintf(msg, "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d,%d,%.2f\n",
                         accel_filt_c[0], accel_filt_c[1], accel_filt_c[2],
                         gyro_velocity[0], gyro_velocity[1], gyro_velocity[2],
-                        fallStatus, BOARD_NUMBER,fall_state);
+                        fallStatus, BOARD_NUMBER, fall_state, baro_pressure);
                 wifiTCPSend(msg);
             }
         }
