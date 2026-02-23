@@ -18,11 +18,10 @@ const FALL_STATE_STYLES: Record<FallState, string | null> = {
 };
 
 function FallStateBadge({ state }: { state: FallState }) {
-  const style = FALL_STATE_STYLES[state];
-  if (!style) return null;
+  const style = FALL_STATE_STYLES[state] ?? "bg-gray-800 text-gray-400 ring-1 ring-gray-700/50";
   return (
     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${style}`}>
-      {FALL_STATE_LABELS[state]}
+      Board Status: {FALL_STATE_LABELS[state]}
     </span>
   );
 }
