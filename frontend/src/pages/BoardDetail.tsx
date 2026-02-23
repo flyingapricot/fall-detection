@@ -164,7 +164,7 @@ export default function BoardDetail() {
       </div>
 
       {/* Fall event history */}
-      <FallEventHistory boardId={id!} />
+      <FallEventHistory boardId={id!} fallActive={fallActive} />
 
       <Toast message={toast} onDismiss={clearToast} />
     </div>

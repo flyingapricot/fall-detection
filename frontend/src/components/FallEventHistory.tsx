@@ -51,8 +51,8 @@ function StatusBadge({ status }: { status: FallEvent["status"] }) {
   );
 }
 
-export default function FallEventHistory({ boardId }: { boardId: string }) {
-  const { events, loading, error } = useFallEvents(boardId);
+export default function FallEventHistory({ boardId, fallActive }: { boardId: string; fallActive: boolean }) {
+  const { events, loading, error } = useFallEvents(boardId, fallActive);
   const [page, setPage] = useState(0);
 
   const total = events.length;

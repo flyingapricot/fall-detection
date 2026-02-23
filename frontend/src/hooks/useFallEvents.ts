@@ -11,7 +11,7 @@ export interface FallEvent {
   durationSecs: number | null;
 }
 
-export function useFallEvents(boardId: string) {
+export function useFallEvents(boardId: string, refreshSignal?: unknown) {
   const [events, setEvents] = useState<FallEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,10 +36,11 @@ export function useFallEvents(boardId: string) {
     }
 
     fetch_();
-    // Refresh every 30s to pick up new events
     const interval = setInterval(fetch_, 30_000);
     return () => { active = false; clearInterval(interval); };
-  }, [boardId]);
+  // refreshSignal triggers an immediate refetch whenever fallActive changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, refreshSignal]);
 
   return { events, loading, error };
 }
