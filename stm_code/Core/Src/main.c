@@ -9,6 +9,7 @@
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_accelero.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_tsensor.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_gyro.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_psensor.h"
 
 #include "stdio.h"
 #include "string.h"
@@ -222,7 +223,7 @@ int main(void)
 
     BSP_LED_Off(LED2);
     Buzzer_Off();
-    //BSP_PSENSOR_Init();
+    BSP_PSENSOR_Init();
 
 
     uart_log("Testing HAL_Delay...\r\n");
@@ -568,3 +569,9 @@ int _isatty(int file) { return 1; }
 int _close(int file) { return -1; }
 int _getpid(void) { return 1; }
 int _kill(int pid, int sig) { return -1; }
+
+int _write(int file, char *ptr, int len)
+{
+    HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, HAL_MAX_DELAY);
+    return len;
+}
