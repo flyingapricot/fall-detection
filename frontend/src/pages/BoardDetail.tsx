@@ -5,6 +5,7 @@ import SensorConsole from "../components/SensorConsole";
 import FallAlertBanner from "../components/FallAlertBanner";
 import SubscriberList from "../components/SubscriberList";
 import FallEventHistory from "../components/FallEventHistory";
+import BarometerChart from "../components/BarometerChart";
 import Toast from "../components/Toast";
 import type { SensorReading, FallState } from "../types/sensor";
 import { FALL_STATE_LABELS } from "../types/sensor";
@@ -27,7 +28,7 @@ function FallStateBadge({ state }: { state: FallState }) {
 }
 
 function exportCSV(readings: SensorReading[], boardId: string) {
-  const header = "timestamp,accelX,accelY,accelZ,gyroX,gyroY,gyroZ,fallStatus,boardNumber,fallState";
+  const header = "timestamp,accelX,accelY,accelZ,gyroX,gyroY,gyroZ,fallStatus,boardNumber,fallState,barometer";
   const rows = readings.map((r) =>
     [
       new Date(r.timestamp).toISOString(),
@@ -36,6 +37,7 @@ function exportCSV(readings: SensorReading[], boardId: string) {
       r.fallStatus ? 1 : 0,
       r.boardNumber,
       r.fallState,
+      r.barometer,
     ].join(",")
   );
   const csv = [header, ...rows].join("\n");
@@ -146,6 +148,9 @@ export default function BoardDetail() {
       <div className="mb-4 grid gap-4 md:grid-cols-2">
         <SensorChart readings={readings} type="accel" />
         <SensorChart readings={readings} type="gyro" />
+      </div>
+      <div className="mb-4">
+        <BarometerChart readings={readings} />
       </div>
 
       {/* Subscribers */}

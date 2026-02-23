@@ -18,13 +18,14 @@ export interface SensorReading {
   fallStatus: boolean;
   boardNumber: number;
   fallState: FallState;
+  barometer: number;
 }
 
 export function parseSensorCSV(csv: string): SensorReading | null {
   const parts = csv.trim().split(",");
-  if (parts.length < 9) return null;
+  if (parts.length < 10) return null;
 
-  const [aX, aY, aZ, gX, gY, gZ, fall, board, state] = parts;
+  const [aX, aY, aZ, gX, gY, gZ, fall, board, state, baro] = parts;
   return {
     timestamp: Date.now(),
     accelX: parseFloat(aX),
@@ -36,5 +37,6 @@ export function parseSensorCSV(csv: string): SensorReading | null {
     fallStatus: fall.trim() === "1",
     boardNumber: parseInt(board, 10),
     fallState: (parseInt(state, 10) as FallState) ?? 0,
+    barometer: parseFloat(baro),
   };
 }

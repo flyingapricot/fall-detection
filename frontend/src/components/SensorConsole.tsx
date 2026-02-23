@@ -10,8 +10,9 @@ function formatLine(r: SensorReading) {
   const ts = t.toLocaleTimeString("en-US", { hour12: false });
   const accel = `A[${fmt(r.accelX)},${fmt(r.accelY)},${fmt(r.accelZ)}]`;
   const gyro = `G[${fmt(r.gyroX)},${fmt(r.gyroY)},${fmt(r.gyroZ)}]`;
+  const baro = `P[${r.barometer.toFixed(2).padStart(9)}hPa]`;
   const fall = r.fallStatus ? "  !! FALL DETECTED" : "";
-  return { text: `${ts} ${accel} ${gyro}${fall}`, isFall: r.fallStatus };
+  return { text: `${ts} ${accel} ${gyro} ${baro}${fall}`, isFall: r.fallStatus };
 }
 
 export default function SensorConsole({

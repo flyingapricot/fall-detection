@@ -109,7 +109,7 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 		fields := strings.Split(line, ",")
 
 		// TODO: Create and Move verification into a different package
-		if len(fields) != 9 {
+		if len(fields) != 10 {
 			log.Printf("Invalid message (len=%d) from %s: %q", len(fields), conn.RemoteAddr(), line)
 			continue
 		}
@@ -168,7 +168,8 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 		// 3 - 5 is gyrometer data
 		// 6 is fallStatus
 		// 7 is the board number
-		// 8 is the fall state (TODO)
+		// 8 is the fall state
+		// 9 is the barometer data
 
 		// Publish to MQTT Broker
 		sensorTopic := "fall-detection/board" + boardID + "/sensors"
