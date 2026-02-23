@@ -57,7 +57,9 @@ export default function BoardDetail() {
     fallActive, toast, clearToast, togglePause, error,
   } = useMqtt(id!);
 
-  const fallState = latestReading?.fallState ?? 0;
+  // Gate on fallActive so the badge clears immediately on ACK/timeout,
+  // even if the board keeps sending fallState > 0 for the remaining 30s.
+  const fallState = fallActive ? (latestReading?.fallState ?? 0) : 0;
 
   const statusDot = !isConnected
     ? "bg-gray-600"
