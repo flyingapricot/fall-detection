@@ -52,13 +52,12 @@ function exportCSV(readings: SensorReading[], boardId: string) {
 export default function BoardDetail() {
   const { id } = useParams<{ id: string }>();
   const {
-    readings, latestReading, isConnected, isBoardActive, isPaused,
-    fallActive, toast, clearToast, togglePause, error,
+    readings, isConnected, isBoardActive, isPaused,
+    fallActive, displayFallState, toast, clearToast, togglePause, error,
   } = useMqtt(id!);
 
-  // Gate on fallActive so the badge clears immediately on ACK/timeout,
-  // even if the board keeps sending fallState > 0 for the remaining 30s.
-  const fallState = fallActive ? (latestReading?.fallState ?? 0) : 0;
+  // displayFallState mirrors the board's raw fallState and resets to 0 on ACK.
+  const fallState = displayFallState;
 
   const statusDot = !isConnected
     ? "bg-gray-600"

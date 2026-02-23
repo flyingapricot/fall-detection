@@ -16,6 +16,7 @@ export function useMqtt(boardId: string) {
   const [isBoardActive, setIsBoardActive] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [fallActive, setFallActive] = useState(false);
+  const [displayFallState, setDisplayFallState] = useState<number>(0);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<mqtt.MqttClient | null>(null);
@@ -96,6 +97,7 @@ export function useMqtt(boardId: string) {
         if (trimmed.startsWith("RESOLVED")) {
           if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
           setFallActive(false);
+          setDisplayFallState(0);
           boardFallStateRef.current = false;
           // Cooldown prevents a brief fallStatus 0→1 transition from re-triggering
           postAckCooldownRef.current = true;
@@ -111,6 +113,9 @@ export function useMqtt(boardId: string) {
       if (!reading) return;
 
       addReading(reading);
+
+      // Always mirror the board's raw fall state for the badge display
+      setDisplayFallState(reading.fallState);
 
       // Only trigger on 0→1 transition, not on every reading already in fall state.
       // This prevents re-firing after an early ACK while the board is still falling.
@@ -138,5 +143,5 @@ export function useMqtt(boardId: string) {
     };
   }, [boardId, addReading]);
 
-  return { readings, latestReading, isConnected, isBoardActive, isPaused, fallActive, toast, clearToast, togglePause, error };
+  return { readings, latestReading, isConnected, isBoardActive, isPaused, fallActive, displayFallState, toast, clearToast, togglePause, error };
 }
