@@ -39,12 +39,12 @@ export default function BarometerChart({ readings }: { readings: SensorReading[]
           grid: { stroke: "#1f2937" },
           ticks: { stroke: "#374151" },
           values: (_u, splits) => splits.map((s) => s.toFixed(1) + " hPa"),
-          size: 70,
+          size: 85,
         },
       ],
       series: [
         {},
-        { stroke: COLOR, width: 1.5, fill: COLOR + "18" },
+        { stroke: COLOR, width: 2, fill: COLOR + "18", paths: uPlot.paths.spline?.() },
       ],
     };
 

@@ -67,13 +67,14 @@ export default function SensorChart({
           grid: { stroke: "#1f2937" },
           ticks: { stroke: "#374151" },
           values: (_u, splits) => splits.map((s) => s.toFixed(1) + " " + unit),
+          size: 75,
         },
       ],
       series: [
         {},
-        { stroke: COLORS.x, width: 1.5 },
-        { stroke: COLORS.y, width: 1.5 },
-        { stroke: COLORS.z, width: 1.5 },
+        { stroke: COLORS.x, width: 2, paths: uPlot.paths.spline?.() },
+        { stroke: COLORS.y, width: 2, paths: uPlot.paths.spline?.() },
+        { stroke: COLORS.z, width: 2, paths: uPlot.paths.spline?.() },
       ],
     };
 
