@@ -23,6 +23,7 @@ export function useMqtt(boardId: string) {
   const fallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferRef = useRef<SensorReading[]>([]);
   const boardFallStateRef = useRef(false); // tracks board's actual fall state
+  const postAckCooldownRef = useRef(false); // suppresses re-trigger for 5s after ACK
 
   const clearToast = useCallback(() => setToast(null), []);
 
@@ -80,7 +81,10 @@ export function useMqtt(boardId: string) {
     client.on("connect", () => {
       setIsConnected(true);
       setError(null);
-      client.subscribe([sensorsTopic, alertsTopic]);
+      // Sensors at QoS 0 (high-frequency, occasional drops OK)
+      client.subscribe(sensorsTopic, { qos: 0 });
+      // Alerts at QoS 1 (critical one-shot messages must not be dropped)
+      client.subscribe(alertsTopic, { qos: 1 });
     });
 
     client.on("message", (topic, payload) => {
@@ -92,6 +96,10 @@ export function useMqtt(boardId: string) {
         if (trimmed.startsWith("RESOLVED")) {
           if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
           setFallActive(false);
+          boardFallStateRef.current = false;
+          // Cooldown prevents a brief fallStatus 0→1 transition from re-triggering
+          postAckCooldownRef.current = true;
+          setTimeout(() => { postAckCooldownRef.current = false; }, 5000);
           const username = trimmed.includes(":") ? trimmed.split(":")[1] : null;
           setToast(username ? `Fall acknowledged by @${username}` : "Fall acknowledged");
         }
@@ -106,7 +114,7 @@ export function useMqtt(boardId: string) {
 
       // Only trigger on 0→1 transition, not on every reading already in fall state.
       // This prevents re-firing after an early ACK while the board is still falling.
-      if (reading.fallStatus && !boardFallStateRef.current) {
+      if (reading.fallStatus && !boardFallStateRef.current && !postAckCooldownRef.current) {
         if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
         setFallActive(true);
         fallTimerRef.current = setTimeout(() => {
