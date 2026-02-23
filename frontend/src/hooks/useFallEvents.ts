@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL as string;
 
@@ -15,6 +15,9 @@ export function useFallEvents(boardId: string, refreshSignal?: unknown) {
   const [events, setEvents] = useState<FallEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [manualTick, setManualTick] = useState(0);
+
+  const refetch = useCallback(() => setManualTick(t => t + 1), []);
 
   useEffect(() => {
     let active = true;
@@ -38,9 +41,9 @@ export function useFallEvents(boardId: string, refreshSignal?: unknown) {
     fetch_();
     const interval = setInterval(fetch_, 30_000);
     return () => { active = false; clearInterval(interval); };
-  // refreshSignal triggers an immediate refetch whenever fallActive changes
+  // refreshSignal and manualTick both trigger an immediate refetch
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, refreshSignal]);
+  }, [boardId, refreshSignal, manualTick]);
 
-  return { events, loading, error };
+  return { events, loading, error, refetch };
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useFallEvents, type FallEvent } from "../hooks/useFallEvents";
 
 const PAGE_SIZE = 5;
@@ -52,8 +52,19 @@ function StatusBadge({ status }: { status: FallEvent["status"] }) {
 }
 
 export default function FallEventHistory({ boardId, fallActive }: { boardId: string; fallActive: boolean }) {
-  const { events, loading, error } = useFallEvents(boardId, fallActive);
+  const { events, loading, error, refetch } = useFallEvents(boardId, fallActive);
   const [page, setPage] = useState(0);
+  const prevFallActive = useRef(fallActive);
+
+  // When the banner clears (true → false), schedule a follow-up refetch 12s later
+  // so we catch the backend expiry ticker (runs every 10s) without waiting 30s.
+  useEffect(() => {
+    if (prevFallActive.current && !fallActive) {
+      const id = setTimeout(refetch, 12_000);
+      return () => clearTimeout(id);
+    }
+    prevFallActive.current = fallActive;
+  }, [fallActive, refetch]);
 
   const total = events.length;
   const today = events.filter(e => isToday(e.detectedAt)).length;
