@@ -1,0 +1,28 @@
+# Ignore build outputs
+Debug/
+Release/
+build/
+out/
+bin/
+obj/
+
+# Compiled files
+*.o
+*.d
+*.elf
+*.axf
+*.map
+*.bin
+*.hex
+*.log
+*.launch
+
+# Eclipse/MCUXpresso user-specific prefs
+.settings/org.eclipse.core.resources.prefs
+.settings/org.eclipse.cdt.ui.prefs
+.settings/org.eclipse.cdt.codan.core.prefs
+.settings/org.eclipse.cdt.managedbuilder.core.prefs
+
+# OS-specific clutter
+.DS_Store
+Thumbs.db
