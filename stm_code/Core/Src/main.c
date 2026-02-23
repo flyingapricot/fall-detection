@@ -32,7 +32,7 @@ UART_HandleTypeDef huart1;
 
 #define REMOTE_PORT    50066
 #define WIFI_SOCKET    0
-#define BOARD_NUMBER 1
+#define BOARD_NUMBER 2
 
 // Buzzer pin definition - PA4 (D7)
 #define BUZZER_PIN GPIO_PIN_4

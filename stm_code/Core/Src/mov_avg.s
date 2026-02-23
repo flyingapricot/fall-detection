@@ -16,8 +16,8 @@
 .align 2
 @ CG2028 Assignment, Sem 2, AY 2025/26
 @ (c) ECE NUS, 2025
-@ Write Student 1's Name here: ABCD (A1234567R)
-@ Write Student 2's Name here: WXYZ (A0000007X)
+@ Write Student 1's Name here: Neo Qi Hao (A0281484X)
+@ Write Student 2's Name here: Neeraj Kumbar (A0271737X)
 @ Register usage:
 @ R0: N (number of samples to average)
 @ R1: accel_buff (pointer to buffer)
