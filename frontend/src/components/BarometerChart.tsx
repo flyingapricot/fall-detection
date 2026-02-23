@@ -69,7 +69,7 @@ export default function BarometerChart({ readings }: { readings: SensorReading[]
     const chart = chartRef.current;
     if (!chart || readings.length === 0) return;
 
-    const nowSecs = readings[readings.length - 1].timestamp / 1000;
+    const nowSecs = Date.now() / 1000;
     const windowStart = nowSecs - WINDOW_SECS;
     const windowed = readings.filter((r) => r.timestamp / 1000 >= windowStart);
 
@@ -77,7 +77,7 @@ export default function BarometerChart({ readings }: { readings: SensorReading[]
     const baro = windowed.map((r) => r.barometer);
 
     chart.setData([ts, baro]);
-    chart.setScale("x", { min: windowStart, max: nowSecs });
+    chart.setScale("x", { min: windowStart, max: nowSecs + 3 });
   }, [readings]);
 
   return (

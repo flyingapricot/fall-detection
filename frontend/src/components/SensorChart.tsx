@@ -98,10 +98,11 @@ export default function SensorChart({
     const chart = chartRef.current;
     if (!chart || readings.length === 0) return;
 
-    const nowSecs = readings[readings.length - 1].timestamp / 1000;
+    // Anchor to wall clock so the window advances continuously and new data
+    // never lands right at the edge. The 3s right pad gives breathing room.
+    const nowSecs = Date.now() / 1000;
     const windowStart = nowSecs - WINDOW_SECS;
 
-    // Only render readings within the sliding window
     const windowed = readings.filter((r) => r.timestamp / 1000 >= windowStart);
 
     const ts = windowed.map((r) => r.timestamp / 1000);
@@ -116,8 +117,7 @@ export default function SensorChart({
       zData as (number | null)[],
     ]);
 
-    // Lock the x-axis to a fixed window so the chart scrolls rather than compresses
-    chart.setScale("x", { min: windowStart, max: nowSecs });
+    chart.setScale("x", { min: windowStart, max: nowSecs + 3 });
   }, [readings, visible, fields]);
 
   const toggle = (axis: "x" | "y" | "z") =>
