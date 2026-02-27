@@ -228,60 +228,6 @@ int wifiTCPDisconnect(void)
 }
 
 // NFC Functions
-void NFC_WriteURL(void)
-{
-    // Build URL string with board number
-    char url[64];
-    sprintf(url, "fall-detection-six.vercel.app/board/%d", BOARD_NUMBER);
-    uint8_t url_len = strlen(url);
-
-    // NDEF message structure:
-    // CC file (4 bytes) + NDEF TLV header + NDEF record header + URL
-    //
-    // NDEF URI record: protocol prefix 0x04 = "https://"
-    // So we don't include "https://" in the URL string
-
-    uint8_t ndef_msg[128];
-    uint16_t idx = 0;
-
-    // Capability Container (CC) - 4 bytes at address 0x0000
-    uint8_t cc[4] = {
-        0xE1,       // Magic number (NDEF)
-        0x40,       // Version 2.0, read access granted
-        0x40,       // 64 * 8 = 512 bytes memory size
-        0x05        // Read/write access
-    };
-    BSP_NFCTAG_WriteData(0, cc, 0x0000, 4);
-    HAL_Delay(10);
-
-    // NDEF message starts at address 0x0004
-    // TLV: Type = 0x03 (NDEF), Length = payload
-    uint8_t ndef_record_len = 1 + 1 + 1 + 1 + url_len;  // type_len + payload_len_field + type + uri_prefix + url
-
-    idx = 0;
-    ndef_msg[idx++] = 0x03;                    // NDEF Message TLV type
-    ndef_msg[idx++] = ndef_record_len;         // TLV length
-
-    // NDEF Record header
-    ndef_msg[idx++] = 0xD1;                    // MB=1, ME=1, SR=1, TNF=0x01 (well-known)
-    ndef_msg[idx++] = 0x01;                    // Type length = 1
-    ndef_msg[idx++] = 1 + url_len;             // Payload length (prefix + url)
-    ndef_msg[idx++] = 0x55;                    // Type = 'U' (URI)
-
-    // URI payload
-    ndef_msg[idx++] = 0x04;                    // Prefix: "https://"
-    memcpy(&ndef_msg[idx], url, url_len);
-    idx += url_len;
-
-    // Terminator TLV
-    ndef_msg[idx++] = 0xFE;
-
-    BSP_NFCTAG_WriteData(0, ndef_msg, 0x0004, idx);
-    HAL_Delay(10);
-
-    uart_logf("NFC URL written: https://%s\r\n", url);
-}
-
 void NFC_Init(void)
 {
     // Initialize NFC tag via BSP (sets up I2C2)
@@ -291,9 +237,6 @@ void NFC_Init(void)
         return;
     }
     uart_log("NFC tag initialized\r\n");
-
-    // Write dashboard URL to NFC tag
-    NFC_WriteURL();
 
     // Enable GPO on RF field change
     BSP_NFCTAG_SetGPO_en_Dyn(0);
