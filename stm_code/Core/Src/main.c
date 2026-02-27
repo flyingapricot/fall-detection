@@ -10,6 +10,7 @@
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_tsensor.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_gyro.h"
 #include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_psensor.h"
+#include "../../Drivers/BSP/B-L4S5I-IOT01/stm32l4s5i_iot01_nfctag.h"
 
 #include "stdio.h"
 #include "string.h"
@@ -75,6 +76,7 @@ uint32_t last_buzzer_toggle = 0;
 
 static int TCPConnected = 0;
 static int fallStatus = 0;
+volatile int nfc_tap_detected = 0;
 
 uint8_t remote_ip[4] = {66, 33, 22, 238};
 
@@ -225,6 +227,92 @@ int wifiTCPDisconnect(void)
     return 0;
 }
 
+// NFC Functions
+void NFC_WriteURL(void)
+{
+    // Build URL string with board number
+    char url[64];
+    sprintf(url, "fall-detection-six.vercel.app/board/%d", BOARD_NUMBER);
+    uint8_t url_len = strlen(url);
+
+    // NDEF message structure:
+    // CC file (4 bytes) + NDEF TLV header + NDEF record header + URL
+    //
+    // NDEF URI record: protocol prefix 0x04 = "https://"
+    // So we don't include "https://" in the URL string
+
+    uint8_t ndef_msg[128];
+    uint16_t idx = 0;
+
+    // Capability Container (CC) - 4 bytes at address 0x0000
+    uint8_t cc[4] = {
+        0xE1,       // Magic number (NDEF)
+        0x40,       // Version 2.0, read access granted
+        0x40,       // 64 * 8 = 512 bytes memory size
+        0x05        // Read/write access
+    };
+    BSP_NFCTAG_WriteData(0, cc, 0x0000, 4);
+    HAL_Delay(10);
+
+    // NDEF message starts at address 0x0004
+    // TLV: Type = 0x03 (NDEF), Length = payload
+    uint8_t ndef_record_len = 1 + 1 + 1 + 1 + url_len;  // type_len + payload_len_field + type + uri_prefix + url
+
+    idx = 0;
+    ndef_msg[idx++] = 0x03;                    // NDEF Message TLV type
+    ndef_msg[idx++] = ndef_record_len;         // TLV length
+
+    // NDEF Record header
+    ndef_msg[idx++] = 0xD1;                    // MB=1, ME=1, SR=1, TNF=0x01 (well-known)
+    ndef_msg[idx++] = 0x01;                    // Type length = 1
+    ndef_msg[idx++] = 1 + url_len;             // Payload length (prefix + url)
+    ndef_msg[idx++] = 0x55;                    // Type = 'U' (URI)
+
+    // URI payload
+    ndef_msg[idx++] = 0x04;                    // Prefix: "https://"
+    memcpy(&ndef_msg[idx], url, url_len);
+    idx += url_len;
+
+    // Terminator TLV
+    ndef_msg[idx++] = 0xFE;
+
+    BSP_NFCTAG_WriteData(0, ndef_msg, 0x0004, idx);
+    HAL_Delay(10);
+
+    uart_logf("NFC URL written: https://%s\r\n", url);
+}
+
+void NFC_Init(void)
+{
+    // Initialize NFC tag via BSP (sets up I2C2)
+    if (BSP_NFCTAG_Init(0) != NFCTAG_OK)
+    {
+        uart_log("NFC init failed!\r\n");
+        return;
+    }
+    uart_log("NFC tag initialized\r\n");
+
+    // Write dashboard URL to NFC tag
+    NFC_WriteURL();
+
+    // Enable GPO on RF field change
+    BSP_NFCTAG_SetGPO_en_Dyn(0);
+
+    // Configure PE4 as EXTI interrupt (ST25DV04K GPO pin)
+    __HAL_RCC_GPIOE_CLK_ENABLE();
+
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = GPIO_PIN_4;
+    GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+    HAL_NVIC_SetPriority(EXTI4_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
+    uart_log("NFC tap-to-acknowledge ready\r\n");
+}
+
 // Buzzer functions
 void Buzzer_Init(void)
 {
@@ -261,6 +349,7 @@ int main(void)
     BSP_LED_Off(LED2);
     Buzzer_Off();
     BSP_PSENSOR_Init();
+    NFC_Init();
 
 
     uart_log("Testing HAL_Delay...\r\n");
@@ -530,13 +619,25 @@ int main(void)
 
                 case STATE_FALL_CONFIRMED:
                 {
-                    // Fallback timeout (30 seconds)
-                    if((current_time - impact_timestamp) > 30000) {
+
+                    if (nfc_tap_detected)
+                    {
+                        nfc_tap_detected = 0;
                         fall_state = STATE_NORMAL;
                         fallStatus = 0;
                         Buzzer_Off();
                         BSP_LED_Off(LED2);
-                        uart_log("Fall auto-reset (timeout)\r\n");
+
+                        // Triple-blink confirmation pattern
+                        for (int b = 0; b < 3; b++)
+                        {
+                            BSP_LED_On(LED2);
+                            HAL_Delay(80);
+                            BSP_LED_Off(LED2);
+                            HAL_Delay(80);
+                        }
+
+                        uart_log("Fall acknowledged via NFC tap!\r\n");
                         break;
                     }
 
@@ -618,6 +719,18 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == GPIO_PIN_1)
         SPI_WIFI_ISR();
+
+    if (GPIO_Pin == GPIO_PIN_4)
+    {
+        if (fall_state == STATE_FALL_CONFIRMED)
+            nfc_tap_detected = 1;
+    }
+
+}
+
+void EXTI4_IRQHandler(void)
+{
+    HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_4);
 }
 
 int _read(int file, char *ptr, int len) { return 0; }
