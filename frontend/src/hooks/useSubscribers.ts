@@ -33,7 +33,8 @@ export function useSubscribers(boardId: string) {
     }
 
     fetchSubscribers();
-    return () => { active = false; };
+    const interval = setInterval(fetchSubscribers, 15_000);
+    return () => { active = false; clearInterval(interval); };
   }, [boardId]);
 
   return { subscribers, loading, error };
