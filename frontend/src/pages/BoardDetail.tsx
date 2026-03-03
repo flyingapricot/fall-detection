@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMqtt } from "../hooks/useMqtt";
 import SensorChart from "../components/SensorChart";
@@ -67,9 +68,49 @@ export default function BoardDetail() {
     readings, isConnected, isBoardActive, isPaused,
     fallActive, displayFallState,
     nfcResolved, clearNfcResolved,
+    fallDetected, clearFallDetected,
     boardExpired, dismissExpired,
     toast, clearToast, togglePause, error,
   } = useMqtt(id!);
+
+  // Request browser notification permission on mount
+  const notifPermissionRequested = useRef(false);
+  useEffect(() => {
+    if (!notifPermissionRequested.current && "Notification" in window && Notification.permission === "default") {
+      notifPermissionRequested.current = true;
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Audio + browser notification on fall detection
+  useEffect(() => {
+    if (!fallDetected) return;
+
+    // Three short beeps via Web Audio API
+    try {
+      const ctx = new AudioContext();
+      [0, 0.35, 0.7].forEach((t) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.4, ctx.currentTime + t);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.25);
+        osc.start(ctx.currentTime + t);
+        osc.stop(ctx.currentTime + t + 0.25);
+      });
+    } catch {}
+
+    // Browser notification (works even if tab is in background)
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(`🚨 Fall Detected — Board ${id}`, {
+        body: "A fall has been detected. NFC tap required to clear the alert.",
+        icon: "/favicon.ico",
+      });
+    }
+  }, [fallDetected, id]);
 
   const fallState = displayFallState;
 
@@ -93,6 +134,78 @@ export default function BoardDetail() {
 
   return (
     <>
+      {/* ── Fall Detected overlay ────────────────────────────────── */}
+      {fallDetected && (
+        <>
+          <style>{`
+            @keyframes fall-ol-scale {
+              from { transform: scale(0.85); opacity: 0; }
+              to   { transform: scale(1);    opacity: 1; }
+            }
+            @keyframes fall-ol-ring {
+              0%   { transform: scale(1);   opacity: 0.6; }
+              100% { transform: scale(1.7); opacity: 0;   }
+            }
+            @keyframes fall-ol-icon {
+              from { transform: translateY(-8px); opacity: 0; }
+              to   { transform: translateY(0);    opacity: 1; }
+            }
+            @keyframes fall-ol-text {
+              from { transform: translateY(10px); opacity: 0; }
+              to   { transform: translateY(0);    opacity: 1; }
+            }
+            .fall-ol-card { animation: fall-ol-scale 0.4s cubic-bezier(0.34,1.56,0.64,1) both; }
+            .fall-ol-ring { animation: fall-ol-ring  1.2s ease-out 0.2s infinite; }
+            .fall-ol-icon { animation: fall-ol-icon  0.4s ease-out 0.3s both; }
+            .fall-ol-text { animation: fall-ol-text  0.4s ease-out 0.5s both; }
+          `}</style>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+            onClick={clearFallDetected}
+          >
+            <div
+              className="fall-ol-card relative w-full max-w-sm rounded-2xl border border-red-500/30 bg-gray-950 p-8 text-center shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Glow */}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="h-64 w-64 rounded-full bg-red-500/10 blur-3xl" />
+              </div>
+
+              {/* Icon stack */}
+              <div className="relative z-10 mb-6 flex items-center justify-center">
+                <div className="fall-ol-ring absolute h-24 w-24 rounded-full bg-red-500/25" />
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-red-500/15 ring-2 ring-red-500/40">
+                  <div className="fall-ol-icon">
+                    <svg className="h-12 w-12 text-red-400" viewBox="0 0 24 24" fill="currentColor">
+                      <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003ZM12 8.25a.75.75 0 0 1 .75.75v3.75a.75.75 0 0 1-1.5 0V9a.75.75 0 0 1 .75-.75Zm0 8.25a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Text */}
+              <div className="fall-ol-text relative z-10">
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-red-500/10 px-3 py-1 text-xs font-medium text-red-400 ring-1 ring-red-500/20">
+                  🚨 Alert
+                </div>
+                <h2 className="text-2xl font-bold text-white">Fall Detected!</h2>
+                <p className="mt-1.5 text-sm text-gray-400">Board {id}</p>
+                <p className="mt-3 text-sm text-gray-500">
+                  A fall has been detected. The alert will clear when an NFC device is tapped on the board.
+                </p>
+                <button
+                  onClick={clearFallDetected}
+                  className="mt-5 text-xs text-gray-600 underline-offset-2 hover:text-gray-400 hover:underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── NFC Resolved overlay ─────────────────────────────────── */}
       {nfcResolved && (
         <>

@@ -8,6 +8,7 @@ const PASSWORD = import.meta.env.VITE_MQTT_PASSWORD as string;
 const MAX_READINGS = 200;
 const STALE_TIMEOUT = 5000;
 const NFC_RESOLVED_DISPLAY_MS = 6000;
+const FALL_DETECTED_DISPLAY_MS = 8000;
 
 export function useMqtt(boardId: string) {
   const [readings, setReadings] = useState<SensorReading[]>([]);
@@ -18,6 +19,7 @@ export function useMqtt(boardId: string) {
   const [fallActive, setFallActive] = useState(false);
   const [displayFallState, setDisplayFallState] = useState<number>(0);
   const [nfcResolved, setNfcResolved] = useState(false);
+  const [fallDetected, setFallDetected] = useState(false);
   const [boardExpired, setBoardExpired] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +27,7 @@ export function useMqtt(boardId: string) {
   const clientRef = useRef<mqtt.MqttClient | null>(null);
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nfcResolvedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallDetectedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferRef = useRef<SensorReading[]>([]);
   const prevFallActiveRef = useRef(false);
 
@@ -33,6 +36,11 @@ export function useMqtt(boardId: string) {
   const clearNfcResolved = useCallback(() => {
     if (nfcResolvedTimerRef.current) clearTimeout(nfcResolvedTimerRef.current);
     setNfcResolved(false);
+  }, []);
+
+  const clearFallDetected = useCallback(() => {
+    if (fallDetectedTimerRef.current) clearTimeout(fallDetectedTimerRef.current);
+    setFallDetected(false);
   }, []);
 
   const dismissExpired = useCallback(() => setBoardExpired(false), []);
@@ -66,10 +74,19 @@ export function useMqtt(boardId: string) {
     });
   }, []);
 
-  // When fallActive transitions true→false, clear the board-expired warning
-  // (board is operational again) and clear the boardExpired state.
+  // Detect fall state transitions.
   useEffect(() => {
+    if (!prevFallActiveRef.current && fallActive) {
+      // false → true: new fall detected — show the overlay.
+      if (fallDetectedTimerRef.current) clearTimeout(fallDetectedTimerRef.current);
+      setFallDetected(true);
+      fallDetectedTimerRef.current = setTimeout(
+        () => setFallDetected(false),
+        FALL_DETECTED_DISPLAY_MS,
+      );
+    }
     if (prevFallActiveRef.current && !fallActive) {
+      // true → false: fall cleared — dismiss expired warning.
       setBoardExpired(false);
     }
     prevFallActiveRef.current = fallActive;
@@ -137,6 +154,7 @@ export function useMqtt(boardId: string) {
     return () => {
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
       if (nfcResolvedTimerRef.current) clearTimeout(nfcResolvedTimerRef.current);
+      if (fallDetectedTimerRef.current) clearTimeout(fallDetectedTimerRef.current);
       client.unsubscribe([sensorsTopic, alertsTopic]);
       client.end();
       clientRef.current = null;
@@ -153,6 +171,8 @@ export function useMqtt(boardId: string) {
     displayFallState,
     nfcResolved,
     clearNfcResolved,
+    fallDetected,
+    clearFallDetected,
     boardExpired,
     dismissExpired,
     toast,
