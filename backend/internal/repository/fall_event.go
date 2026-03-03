@@ -51,14 +51,45 @@ func (r *FallEventRepo) Resolve(ctx context.Context, id int64, resolvedBy int64)
 	return result.RowsAffected() > 0, nil
 }
 
-func (r *FallEventRepo) AutoExpireStale(ctx context.Context, ttl time.Duration) error {
+// AutoExpireStale expires active events older than ttl and returns the board IDs
+// that were just expired so the caller can notify subscribers.
+func (r *FallEventRepo) AutoExpireStale(ctx context.Context, ttl time.Duration) ([]string, error) {
 	query := `
 		UPDATE fall_events
 		SET status = 'expired', resolved_at = $1
 		WHERE status = 'active' AND detected_at < $2
+		RETURNING board_id
 	`
-	_, err := r.db.Pool.Exec(ctx, query, time.Now(), time.Now().Add(-ttl))
-	return err
+	rows, err := r.db.Pool.Query(ctx, query, time.Now(), time.Now().Add(-ttl))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var boardIDs []string
+	for rows.Next() {
+		var boardID string
+		if err := rows.Scan(&boardID); err != nil {
+			return nil, err
+		}
+		boardIDs = append(boardIDs, boardID)
+	}
+	return boardIDs, rows.Err()
+}
+
+// ResolveActiveForBoard resolves the active fall event for a board with no user
+// (used for NFC-tap resolutions where there is no Telegram user involved).
+func (r *FallEventRepo) ResolveActiveForBoard(ctx context.Context, boardID string) (bool, error) {
+	query := `
+		UPDATE fall_events
+		SET status = 'resolved', resolved_at = $1
+		WHERE board_id = $2 AND status = 'active'
+	`
+	result, err := r.db.Pool.Exec(ctx, query, time.Now(), boardID)
+	if err != nil {
+		return false, err
+	}
+	return result.RowsAffected() > 0, nil
 }
 
 func (r *FallEventRepo) GetByBoard(ctx context.Context, boardID string, limit int) ([]FallEvent, error) {
