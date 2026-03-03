@@ -183,8 +183,14 @@ func (s *TCPServer) handleConnection(conn net.Conn) error {
 
 		if currentFall == "1" && prevFall != "1" {
 			alertTopic := "fall-detection/board" + boardID + "/alerts"
-			log.Printf("[TCP Server] Sending alert to topic: %s", alertTopic)
+			log.Printf("[TCP Server] Fall detected on %s, publishing alert", boardID)
 			mqtt.Publish(s.Publisher, alertTopic, line)
+		}
+
+		if currentFall == "0" && prevFall == "1" {
+			alertTopic := "fall-detection/board" + boardID + "/alerts"
+			log.Printf("[TCP Server] NFC reset detected on %s, publishing BOARD_RESET", boardID)
+			mqtt.Publish(s.Publisher, alertTopic, "BOARD_RESET")
 		}
 
 		s.FallState[boardID] = currentFall

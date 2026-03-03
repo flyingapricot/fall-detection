@@ -7,7 +7,7 @@ const USERNAME = import.meta.env.VITE_MQTT_USERNAME as string;
 const PASSWORD = import.meta.env.VITE_MQTT_PASSWORD as string;
 const MAX_READINGS = 200;
 const STALE_TIMEOUT = 5000;
-const FALL_AUTO_DISMISS = 30 * 1000; // 30 seconds, matches backend TTL
+const NFC_RESOLVED_DISPLAY_MS = 6000;
 
 export function useMqtt(boardId: string) {
   const [readings, setReadings] = useState<SensorReading[]>([]);
@@ -17,16 +17,25 @@ export function useMqtt(boardId: string) {
   const [isPaused, setIsPaused] = useState(false);
   const [fallActive, setFallActive] = useState(false);
   const [displayFallState, setDisplayFallState] = useState<number>(0);
+  const [nfcResolved, setNfcResolved] = useState(false);
+  const [boardExpired, setBoardExpired] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
   const clientRef = useRef<mqtt.MqttClient | null>(null);
   const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nfcResolvedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferRef = useRef<SensorReading[]>([]);
-  const boardFallStateRef = useRef(false); // tracks board's actual fall state
-  const postAckCooldownRef = useRef(false); // suppresses re-trigger for 5s after ACK
+  const prevFallActiveRef = useRef(false);
 
   const clearToast = useCallback(() => setToast(null), []);
+
+  const clearNfcResolved = useCallback(() => {
+    if (nfcResolvedTimerRef.current) clearTimeout(nfcResolvedTimerRef.current);
+    setNfcResolved(false);
+  }, []);
+
+  const dismissExpired = useCallback(() => setBoardExpired(false), []);
 
   const resetStaleTimer = useCallback(() => {
     if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
@@ -44,9 +53,7 @@ export function useMqtt(boardId: string) {
     }
 
     setIsPaused((paused) => {
-      if (!paused) {
-        setReadings([...bufferRef.current]);
-      }
+      if (!paused) setReadings([...bufferRef.current]);
       return paused;
     });
   }, [resetStaleTimer]);
@@ -54,12 +61,19 @@ export function useMqtt(boardId: string) {
   const togglePause = useCallback(() => {
     setIsPaused((prev) => {
       const next = !prev;
-      if (!next) {
-        setReadings([...bufferRef.current]);
-      }
+      if (!next) setReadings([...bufferRef.current]);
       return next;
     });
   }, []);
+
+  // When fallActive transitions true→false, clear the board-expired warning
+  // (board is operational again) and clear the boardExpired state.
+  useEffect(() => {
+    if (prevFallActiveRef.current && !fallActive) {
+      setBoardExpired(false);
+    }
+    prevFallActiveRef.current = fallActive;
+  }, [fallActive]);
 
   useEffect(() => {
     const sensorsTopic = `fall-detection/board${boardId}/sensors`;
@@ -82,52 +96,38 @@ export function useMqtt(boardId: string) {
     client.on("connect", () => {
       setIsConnected(true);
       setError(null);
-      // Sensors at QoS 0 (high-frequency, occasional drops OK)
       client.subscribe(sensorsTopic, { qos: 0 });
-      // Alerts at QoS 1 (critical one-shot messages must not be dropped)
       client.subscribe(alertsTopic, { qos: 1 });
     });
 
     client.on("message", (topic, payload) => {
-      const msg = payload.toString();
+      const msg = payload.toString().trim();
 
-      // Alerts topic: only used for RESOLVED signal
       if (topic === alertsTopic) {
-        const trimmed = msg.trim();
-        if (trimmed.startsWith("RESOLVED")) {
-          if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
-          setFallActive(false);
-          setDisplayFallState(0);
-          boardFallStateRef.current = false;
-          // Cooldown prevents a brief fallStatus 0→1 transition from re-triggering
-          postAckCooldownRef.current = true;
-          setTimeout(() => { postAckCooldownRef.current = false; }, 5000);
-          const username = trimmed.includes(":") ? trimmed.split(":")[1] : null;
-          setToast(username ? `Fall acknowledged by @${username}` : "Fall acknowledged");
+        if (msg === "NFC_RESOLVED") {
+          // Board was reset via NFC tap — show the prominent overlay
+          if (nfcResolvedTimerRef.current) clearTimeout(nfcResolvedTimerRef.current);
+          setNfcResolved(true);
+          nfcResolvedTimerRef.current = setTimeout(
+            () => setNfcResolved(false),
+            NFC_RESOLVED_DISPLAY_MS,
+          );
+        } else if (msg === "BOARD_EXPIRED") {
+          // Safety-net: fall active for 5+ mins with no NFC tap
+          setBoardExpired(true);
         }
+        // All other alert messages (BOARD_RESET loopback etc.) are ignored by frontend
         return;
       }
 
-      // Sensors topic: parse data and drive fall state directly
+      // Sensors topic: board is the sole source of truth.
+      // fallStatus drives the banner; only resets via NFC tap (fallStatus → 0).
       const reading = parseSensorCSV(msg);
       if (!reading) return;
 
       addReading(reading);
-
-      // Always mirror the board's raw fall state for the badge display
+      setFallActive(reading.fallStatus);
       setDisplayFallState(reading.fallState);
-
-      // Only trigger on 0→1 transition, not on every reading already in fall state.
-      // This prevents re-firing after an early ACK while the board is still falling.
-      if (reading.fallStatus && !boardFallStateRef.current && !postAckCooldownRef.current) {
-        if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
-        setFallActive(true);
-        fallTimerRef.current = setTimeout(() => {
-          setFallActive(false);
-          setToast("Fall event closed by timeout");
-        }, FALL_AUTO_DISMISS);
-      }
-      boardFallStateRef.current = reading.fallStatus;
     });
 
     client.on("error", (err) => setError(err.message));
@@ -136,12 +136,28 @@ export function useMqtt(boardId: string) {
 
     return () => {
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
-      if (fallTimerRef.current) clearTimeout(fallTimerRef.current);
+      if (nfcResolvedTimerRef.current) clearTimeout(nfcResolvedTimerRef.current);
       client.unsubscribe([sensorsTopic, alertsTopic]);
       client.end();
       clientRef.current = null;
     };
   }, [boardId, addReading]);
 
-  return { readings, latestReading, isConnected, isBoardActive, isPaused, fallActive, displayFallState, toast, clearToast, togglePause, error };
+  return {
+    readings,
+    latestReading,
+    isConnected,
+    isBoardActive,
+    isPaused,
+    fallActive,
+    displayFallState,
+    nfcResolved,
+    clearNfcResolved,
+    boardExpired,
+    dismissExpired,
+    toast,
+    clearToast,
+    togglePause,
+    error,
+  };
 }

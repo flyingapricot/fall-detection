@@ -2,7 +2,6 @@ package alert
 
 import (
 	"context"
-	"fall-detection/internal/mqtt"
 	"fall-detection/internal/repository"
 	"fall-detection/internal/tcp"
 	"fmt"
@@ -213,56 +212,64 @@ Available commands:
 }
 
 func (b *Bot) SendFallAlert(chatID int64, boardID string, eventID int64) {
-	msg := tgbotapi.NewMessage(chatID, "🚨 FALL DETECTED - Board "+boardID)
+	text := fmt.Sprintf(
+		"🚨 FALL DETECTED — %s\n\n⚠️ The alert will only clear when an NFC device is tapped on the board.",
+		boardID,
+	)
+	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Acknowledge?", fmt.Sprintf("acknowledge:%d:%s", eventID, boardID)),
+			tgbotapi.NewInlineKeyboardButtonData("👀 I've seen this", fmt.Sprintf("seen:%d:%s", eventID, boardID)),
 		),
 	)
 	b.api.Send(msg)
 }
 
 func (b *Bot) handleCallback(callback *tgbotapi.CallbackQuery, repo *repository.FallEventRepo) {
-	data := callback.Data // "acknowledge:123:board1"
+	data := callback.Data // "seen:123:board1"
 	parts := strings.Split(data, ":")
 
-	if len(parts) == 3 && parts[0] == "acknowledge" {
-		eventID, _ := strconv.ParseInt(parts[1], 10, 64)
-		boardID := parts[2]
+	if len(parts) != 3 || parts[0] != "seen" {
+		return
+	}
 
-		resolved, err := repo.Resolve(context.Background(), eventID, callback.From.ID)
-		if err != nil {
-			b.api.Request(tgbotapi.NewCallback(callback.ID, "Error resolving event"))
-			return
-		}
+	eventID, _ := strconv.ParseInt(parts[1], 10, 64)
+	boardID := parts[2]
 
-		if !resolved {
-			// Check actual status to give the right feedback
-			event, err := repo.GetByID(context.Background(), eventID)
-			if err == nil && event.Status == "resolved" {
-				b.api.Request(tgbotapi.NewCallback(callback.ID, "Already acknowledged"))
-				b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
-					"✅ This fall was already acknowledged by another responder."))
-			} else {
-				b.api.Request(tgbotapi.NewCallback(callback.ID, "Alert already expired"))
-				b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID,
-					"⏱ This fall alert had already timed out before it was acknowledged."))
-			}
-			return
-		}
+	displayName := callback.From.UserName
+	if displayName != "" {
+		displayName = "@" + displayName
+	} else {
+		displayName = callback.From.FirstName
+	}
 
-		// Successfully resolved — notify all subscribers
-		b.api.Request(tgbotapi.NewCallback(callback.ID, "Acknowledged!"))
-		mqtt.Publish(b.AlertClient, "fall-detection/"+boardID+"/alerts", "RESOLVED:"+callback.From.UserName)
+	event, err := repo.GetByID(context.Background(), eventID)
+	if err != nil {
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Error checking alert status"))
+		return
+	}
 
-		ackMsg := fmt.Sprintf("✅ Fall on %s acknowledged by @%s", boardID, callback.From.UserName)
+	switch event.Status {
+	case "resolved":
+		// Already cleared by NFC tap
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Alert already cleared via NFC tap"))
+
+	case "expired":
+		// Safety-net expired — no NFC tap happened in time
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Alert expired — please check the board"))
+
+	default:
+		// Still active — broadcast that this person has seen it, no DB change
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Marked as seen 👀"))
+
+		seenMsg := fmt.Sprintf(
+			"👀 %s has seen the fall alert on %s\n⚠️ Alert will only clear when the board is NFC-tapped.",
+			displayName, boardID,
+		)
 		chatIDs, _, _, err := b.SubscriptionRepo.GetSubscribers(context.Background(), boardID)
-		if err != nil || len(chatIDs) == 0 {
-			// Fallback: at least notify the person who tapped
-			b.api.Send(tgbotapi.NewMessage(callback.Message.Chat.ID, ackMsg))
-		} else {
+		if err == nil {
 			for _, chatID := range chatIDs {
-				b.api.Send(tgbotapi.NewMessage(chatID, ackMsg))
+				b.api.Send(tgbotapi.NewMessage(chatID, seenMsg))
 			}
 		}
 	}
