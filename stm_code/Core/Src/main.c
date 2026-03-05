@@ -27,6 +27,8 @@ UART_HandleTypeDef huart1;
 
 //#define WIFI_SSID      "SINGTEL-A939(2.4G)"
 //#define WIFI_PASSWORD  "E38xEuj7jpGEAQK"
+//#define WIFI_SSID      "iPhone"
+//#define WIFI_PASSWORD  "jayb4007"
 #define WIFI_SSID      "Hololive#1"
 #define WIFI_PASSWORD  "MotoakiTanigo"
 #define WIFI_SECURITY WIFI_ECN_WPA2_PSK
